@@ -56,8 +56,8 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Pre-defined departments for Insurance Industry
-const DEPARTMENTS = [
+// Base departments (Added missing key roles for Insurance)
+const BASE_DEPARTMENTS = [
   "Underwriting",
   "Claims",
   "Actuarial",
@@ -70,6 +70,10 @@ const DEPARTMENTS = [
   "Finance & Accounting",
   "Operations",
   "Marketing",
+  "Risk Management",
+  "Internal Audit",
+  "Investment",
+  "Business Development",
 ];
 
 const COLORS = [
@@ -81,6 +85,8 @@ const COLORS = [
   "#ec4899",
   "#14b8a6",
   "#f97316",
+  "#64748b",
+  "#0ea5e9",
 ];
 
 export default function App() {
@@ -96,13 +102,15 @@ export default function App() {
   const [filterYear, setFilterYear] = useState("All");
   const [toast, setToast] = useState(null);
 
-  // Form State (Updated for mixed groups and hours)
+  // Form State
   const [formData, setFormData] = useState({
     course: "",
     date: "",
     totalCost: "",
     durationHours: "",
-    allocations: [{ department: "Underwriting", participants: "" }],
+    allocations: [
+      { department: "Underwriting", customDepartment: "", participants: "" },
+    ],
   });
 
   // 1. Authentication Effect
@@ -175,6 +183,22 @@ export default function App() {
     };
   }, [user]);
 
+  // --- Dynamic Department Generation ---
+  // Combine base departments with any custom departments saved in the database
+  const availableDepartments = useMemo(() => {
+    const usedDepts = records
+      .flatMap((r) =>
+        r.allocations ? r.allocations.map((a) => a.department) : [r.department]
+      )
+      .filter(Boolean);
+
+    // Use Set to remove duplicates, then sort alphabetically
+    const uniqueDepts = Array.from(
+      new Set([...BASE_DEPARTMENTS, ...usedDepts])
+    );
+    return uniqueDepts.sort();
+  }, [records]);
+
   // Derived Data & Calculations
   const availableYears = useMemo(() => {
     const years = records.map((r) => r.date?.substring(0, 4)).filter(Boolean);
@@ -192,12 +216,12 @@ export default function App() {
     let totalLearningHours = 0;
     const deptStats = {};
 
-    DEPARTMENTS.forEach((d) => {
+    // Initialize stats object with all dynamically available departments
+    availableDepartments.forEach((d) => {
       deptStats[d] = { name: d, spent: 0, participants: 0, hours: 0 };
     });
 
     filteredRecords.forEach((record) => {
-      // Backward compatibility for old single-department records
       const allocations = record.allocations || [
         {
           department: record.department,
@@ -216,10 +240,18 @@ export default function App() {
       totalParticipants += recordTotalParticipants;
       totalLearningHours += duration * recordTotalParticipants;
 
-      // Distribute cost and hours proportionally across participating departments
       allocations.forEach((alloc) => {
         const p = Number(alloc.participants || 0);
-        if (p === 0 || !deptStats[alloc.department]) return;
+        // Fallback for edge cases where a department might be deleted or missing
+        if (p === 0 || !alloc.department) return;
+        if (!deptStats[alloc.department]) {
+          deptStats[alloc.department] = {
+            name: alloc.department,
+            spent: 0,
+            participants: 0,
+            hours: 0,
+          };
+        }
 
         const proportion =
           recordTotalParticipants > 0 ? p / recordTotalParticipants : 0;
@@ -232,7 +264,10 @@ export default function App() {
       });
     });
 
-    const chartData = Object.values(deptStats);
+    // Only chart departments that have actual participants or spending to keep charts clean
+    const chartData = Object.values(deptStats).filter(
+      (d) => d.participants > 0 || d.spent > 0
+    );
     const pieData = chartData.filter((d) => d.participants > 0);
 
     return {
@@ -242,7 +277,7 @@ export default function App() {
       chartData,
       pieData,
     };
-  }, [filteredRecords]);
+  }, [filteredRecords, availableDepartments]);
 
   // Handlers
   const handleInputChange = (e) => {
@@ -261,7 +296,11 @@ export default function App() {
       ...prev,
       allocations: [
         ...prev.allocations,
-        { department: DEPARTMENTS[0], participants: "" },
+        {
+          department: availableDepartments[0] || "Underwriting",
+          customDepartment: "",
+          participants: "",
+        },
       ],
     }));
   };
@@ -332,15 +371,21 @@ export default function App() {
   };
 
   const handleEditClick = (record) => {
-    // Map old data format to new format for editing
     setFormData({
       course: record.course || "",
       date: record.date || "",
       totalCost: record.totalCost || record.cost || "",
       durationHours: record.durationHours || "",
-      allocations: record.allocations || [
-        { department: record.department, participants: record.participants },
-      ],
+      // Ensure customDepartment field exists for editing form
+      allocations: (
+        record.allocations || [
+          { department: record.department, participants: record.participants },
+        ]
+      ).map((a) => ({
+        department: a.department,
+        customDepartment: "",
+        participants: a.participants,
+      })),
     });
     setEditingId(record.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -352,7 +397,13 @@ export default function App() {
       date: "",
       totalCost: "",
       durationHours: "",
-      allocations: [{ department: DEPARTMENTS[0], participants: "" }],
+      allocations: [
+        {
+          department: availableDepartments[0] || "Underwriting",
+          customDepartment: "",
+          participants: "",
+        },
+      ],
     });
     setEditingId(null);
   };
@@ -362,10 +413,23 @@ export default function App() {
     if (!user || !formData.course || !formData.totalCost || !formData.date)
       return;
 
-    // Validate allocations
-    const validAllocations = formData.allocations.filter(
-      (a) => Number(a.participants) > 0
-    );
+    // Validate allocations and handle custom departments
+    const validAllocations = [];
+    for (let a of formData.allocations) {
+      if (Number(a.participants) > 0) {
+        // If "Other" is selected, use the custom text input instead
+        const finalDepartment =
+          a.department === "Other"
+            ? a.customDepartment.trim() || "Unknown Department"
+            : a.department;
+
+        validAllocations.push({
+          department: finalDepartment,
+          participants: Number(a.participants),
+        });
+      }
+    }
+
     if (validAllocations.length === 0) {
       showToast("Please add at least one participant.", "error");
       return;
@@ -377,13 +441,9 @@ export default function App() {
       date: formData.date,
       totalCost: Number(formData.totalCost),
       durationHours: Number(formData.durationHours || 0),
-      allocations: validAllocations.map((a) => ({
-        department: a.department,
-        participants: Number(a.participants),
-      })),
+      allocations: validAllocations,
     };
 
-    // Budget check logic
     const currentCost = editingId
       ? records.find((r) => r.id === editingId)?.totalCost ||
         records.find((r) => r.id === editingId)?.cost ||
@@ -436,7 +496,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans text-slate-800">
-      {/* Toast Notification */}
       {toast && (
         <div
           className={`fixed top-4 right-4 z-50 flex items-center px-4 py-3 rounded-lg shadow-lg text-white ${
@@ -504,7 +563,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* KPI Cards (Now 5 cards including Learning Hours) */}
+        {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
             <div className="p-3 bg-blue-100 text-blue-600 rounded-lg">
@@ -757,46 +816,77 @@ export default function App() {
 
                 <div className="space-y-2">
                   {formData.allocations.map((alloc, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <select
-                        value={alloc.department}
-                        onChange={(e) =>
-                          handleAllocationChange(
-                            index,
-                            "department",
-                            e.target.value
-                          )
-                        }
-                        className="flex-1 min-w-0 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {DEPARTMENTS.map((d) => (
-                          <option key={d} value={d}>
-                            {d}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder="Pax"
-                        value={alloc.participants}
-                        onChange={(e) =>
-                          handleAllocationChange(
-                            index,
-                            "participants",
-                            e.target.value
-                          )
-                        }
-                        className="w-16 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      {formData.allocations.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeAllocation(index)}
-                          className="p-1 text-slate-400 hover:text-red-500"
+                    <div
+                      key={index}
+                      className="flex flex-col gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg"
+                    >
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={alloc.department}
+                          onChange={(e) =>
+                            handleAllocationChange(
+                              index,
+                              "department",
+                              e.target.value
+                            )
+                          }
+                          className="flex-1 min-w-0 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                         >
-                          <X size={16} />
-                        </button>
+                          {availableDepartments.map((d) => (
+                            <option key={d} value={d}>
+                              {d}
+                            </option>
+                          ))}
+                          <option
+                            value="Other"
+                            className="font-semibold text-blue-600"
+                          >
+                            + เพิ่มแผนกใหม่ (Other)
+                          </option>
+                        </select>
+                        <input
+                          type="number"
+                          min="1"
+                          placeholder="Pax"
+                          value={alloc.participants}
+                          onChange={(e) =>
+                            handleAllocationChange(
+                              index,
+                              "participants",
+                              e.target.value
+                            )
+                          }
+                          className="w-16 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        {formData.allocations.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeAllocation(index)}
+                            className="p-1 text-slate-400 hover:text-red-500"
+                          >
+                            <X size={16} />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Show text input ONLY if "Other" is selected */}
+                      {alloc.department === "Other" && (
+                        <div className="mt-1">
+                          <input
+                            type="text"
+                            placeholder="พิมพ์ชื่อแผนกใหม่ที่นี่..."
+                            required
+                            value={alloc.customDepartment}
+                            onChange={(e) =>
+                              handleAllocationChange(
+                                index,
+                                "customDepartment",
+                                e.target.value
+                              )
+                            }
+                            className="w-full px-3 py-1.5 text-sm border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                          />
+                        </div>
                       )}
                     </div>
                   ))}
