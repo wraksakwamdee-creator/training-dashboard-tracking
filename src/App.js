@@ -29,6 +29,7 @@ import {
   UserCheck,
   UploadCloud,
   Database,
+  Target,
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import {
@@ -90,6 +91,11 @@ const COLORS = [
   "#f97316",
   "#64748b",
   "#0ea5e9",
+  "#84cc16",
+  "#eab308",
+  "#d946ef",
+  "#f43f5e",
+  "#06b6d4",
 ];
 
 export default function App() {
@@ -675,7 +681,7 @@ export default function App() {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
             <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
               <DollarSign size={20} />
@@ -756,6 +762,25 @@ export default function App() {
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
+            <div className="p-2 bg-cyan-100 text-cyan-600 rounded-lg">
+              <Target size={20} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase">
+                Avg Hrs/Person
+              </p>
+              <h3 className="text-lg font-bold text-slate-800">
+                {metrics.uniqueHeads
+                  ? (metrics.totalLearningHours / metrics.uniqueHeads).toFixed(
+                      1
+                    )
+                  : 0}{" "}
+                <span className="text-xs font-normal text-slate-500">Hrs</span>
+              </h3>
+            </div>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
             <div className="p-2 bg-purple-100 text-purple-600 rounded-lg">
               <BookOpen size={20} />
             </div>
@@ -781,7 +806,7 @@ export default function App() {
             <h3 className="text-lg font-bold mb-4">
               Proportional Spent by Department (THB)
             </h3>
-            <div className="h-80">
+            <div className="h-[420px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={metrics.chartData}
@@ -825,15 +850,15 @@ export default function App() {
 
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
             <h3 className="text-lg font-bold mb-4">Learning Hours by Dept</h3>
-            <div className="h-80">
+            <div className="h-[420px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={metrics.pieData}
                     cx="50%"
-                    cy="50%"
+                    cy="40%"
                     innerRadius={60}
-                    outerRadius={100}
+                    outerRadius={90}
                     paddingAngle={5}
                     dataKey="hours"
                     nameKey="name"
@@ -846,7 +871,27 @@ export default function App() {
                     ))}
                   </Pie>
                   <RechartsTooltip formatter={(value) => `${value} Hrs`} />
-                  <Legend iconType="circle" />
+                  <Legend
+                    content={(props) => {
+                      const { payload } = props;
+                      return (
+                        <ul className="flex flex-wrap justify-center gap-x-3 gap-y-2 text-xs mt-2 max-h-[160px] overflow-y-auto px-2 custom-scrollbar">
+                          {payload.map((entry, index) => (
+                            <li
+                              key={`item-${index}`}
+                              className="flex items-center text-slate-600"
+                            >
+                              <span
+                                className="w-2.5 h-2.5 rounded-full mr-1.5 flex-shrink-0"
+                                style={{ backgroundColor: entry.color }}
+                              ></span>
+                              {entry.value}
+                            </li>
+                          ))}
+                        </ul>
+                      );
+                    }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>
