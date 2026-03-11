@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   BarChart,
   Bar,
@@ -26,6 +26,9 @@ import {
   CheckCircle,
   Clock,
   X,
+  UserCheck,
+  UploadCloud,
+  Database,
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import {
@@ -43,7 +46,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 
-// Initialize Firebase OUTSIDE component to prevent re-initialization
+// Initialize Firebase OUTSIDE component
 const firebaseConfig = {
   apiKey: "AIzaSyDFwSy_fQx1j_8LQK2LWxu6qqjN-Qm2rRw",
   authDomain: "training-dashboard-d984f.firebaseapp.com",
@@ -56,7 +59,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Base departments (Added missing key roles for Insurance)
+// Base departments
 const BASE_DEPARTMENTS = [
   "Underwriting",
   "Claims",
@@ -96,11 +99,13 @@ export default function App() {
   // Data States
   const [records, setRecords] = useState([]);
   const [annualBudget, setAnnualBudget] = useState(1000000);
+  const [employeeMaster, setEmployeeMaster] = useState({}); // เก็บฐานข้อมูลพนักงาน
 
   // UI States
   const [editingId, setEditingId] = useState(null);
   const [filterYear, setFilterYear] = useState("All");
   const [toast, setToast] = useState(null);
+  const fileInputRef = useRef(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -108,8 +113,8 @@ export default function App() {
     date: "",
     totalCost: "",
     durationHours: "",
-    allocations: [
-      { department: "Underwriting", customDepartment: "", participants: "" },
+    attendees: [
+      { empId: "", name: "", department: "Underwriting", customDepartment: "" },
     ],
   });
 
@@ -124,9 +129,6 @@ export default function App() {
           try {
             await signInWithCustomToken(auth, __initial_auth_token);
           } catch (tokenError) {
-            console.warn(
-              "Sandbox token invalid for custom config. Falling back to Anonymous Auth..."
-            );
             await signInAnonymously(auth);
           }
         } else {
@@ -137,7 +139,6 @@ export default function App() {
       }
     };
     initAuth();
-
     const unsubscribe = onAuthStateChanged(auth, setUser);
     return () => unsubscribe();
   }, []);
@@ -146,6 +147,7 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
 
+    // Fetch Records
     const recordsRef = collection(db, "training_records");
     const unsubRecords = onSnapshot(
       recordsRef,
@@ -164,42 +166,49 @@ export default function App() {
       }
     );
 
-    const settingsRef = doc(db, "settings", "budget");
+    // Fetch Budget
     const unsubSettings = onSnapshot(
-      settingsRef,
+      doc(db, "settings", "budget"),
       (docSnap) => {
         if (docSnap.exists() && docSnap.data().annualBudget !== undefined) {
           setAnnualBudget(docSnap.data().annualBudget);
         }
-      },
-      (error) => {
-        console.error("Error fetching budget:", error);
+      }
+    );
+
+    // Fetch Employee Master Data
+    const unsubEmp = onSnapshot(
+      doc(db, "settings", "employee_master"),
+      (docSnap) => {
+        if (docSnap.exists() && docSnap.data().data) {
+          setEmployeeMaster(docSnap.data().data);
+        }
       }
     );
 
     return () => {
       unsubRecords();
       unsubSettings();
+      unsubEmp();
     };
   }, [user]);
 
-  // --- Dynamic Department Generation ---
-  // Combine base departments with any custom departments saved in the database
+  // Dynamic Departments
   const availableDepartments = useMemo(() => {
     const usedDepts = records
-      .flatMap((r) =>
-        r.allocations ? r.allocations.map((a) => a.department) : [r.department]
-      )
+      .flatMap((r) => {
+        if (r.attendees) return r.attendees.map((a) => a.department);
+        if (r.allocations) return r.allocations.map((a) => a.department);
+        return [r.department];
+      })
       .filter(Boolean);
-
-    // Use Set to remove duplicates, then sort alphabetically
     const uniqueDepts = Array.from(
       new Set([...BASE_DEPARTMENTS, ...usedDepts])
     );
     return uniqueDepts.sort();
   }, [records]);
 
-  // Derived Data & Calculations
+  // Derived Data
   const availableYears = useMemo(() => {
     const years = records.map((r) => r.date?.substring(0, 4)).filter(Boolean);
     return ["All", ...Array.from(new Set(years)).sort().reverse()];
@@ -210,61 +219,67 @@ export default function App() {
     return records.filter((r) => r.date?.startsWith(filterYear));
   }, [records, filterYear]);
 
+  // Core Metrics Calculation
   const metrics = useMemo(() => {
     let totalSpent = 0;
     let totalParticipants = 0;
     let totalLearningHours = 0;
     const deptStats = {};
+    const uniqueAttendees = new Set();
 
-    // Initialize stats object with all dynamically available departments
     availableDepartments.forEach((d) => {
       deptStats[d] = { name: d, spent: 0, participants: 0, hours: 0 };
     });
 
     filteredRecords.forEach((record) => {
-      const allocations = record.allocations || [
-        {
-          department: record.department,
-          participants: record.participants || 0,
-        },
-      ];
       const recordCost = Number(record.totalCost || record.cost || 0);
       const duration = Number(record.durationHours || 0);
 
-      const recordTotalParticipants = allocations.reduce(
-        (sum, a) => sum + Number(a.participants || 0),
-        0
-      );
+      let attendeesList = [];
 
+      if (record.attendees && record.attendees.length > 0) {
+        attendeesList = record.attendees;
+      } else if (record.allocations) {
+        record.allocations.forEach((alloc) => {
+          for (let i = 0; i < Number(alloc.participants || 0); i++) {
+            attendeesList.push({
+              department: alloc.department,
+              isLegacy: true,
+            });
+          }
+        });
+      } else if (record.department) {
+        for (let i = 0; i < Number(record.participants || 0); i++) {
+          attendeesList.push({ department: record.department, isLegacy: true });
+        }
+      }
+
+      const recordTotalParticipants = attendeesList.length;
       totalSpent += recordCost;
       totalParticipants += recordTotalParticipants;
       totalLearningHours += duration * recordTotalParticipants;
 
-      allocations.forEach((alloc) => {
-        const p = Number(alloc.participants || 0);
-        // Fallback for edge cases where a department might be deleted or missing
-        if (p === 0 || !alloc.department) return;
-        if (!deptStats[alloc.department]) {
-          deptStats[alloc.department] = {
-            name: alloc.department,
-            spent: 0,
-            participants: 0,
-            hours: 0,
-          };
+      const costPerPerson =
+        recordTotalParticipants > 0 ? recordCost / recordTotalParticipants : 0;
+
+      attendeesList.forEach((person) => {
+        const dept = person.department || "Unknown";
+        if (!deptStats[dept])
+          deptStats[dept] = { name: dept, spent: 0, participants: 0, hours: 0 };
+
+        deptStats[dept].spent += costPerPerson;
+        deptStats[dept].participants += 1;
+        deptStats[dept].hours += duration;
+
+        if (!person.isLegacy && (person.empId || person.name)) {
+          const uniqueKey = `${person.empId?.trim() || ""}-${
+            person.name?.trim() || ""
+          }`.toLowerCase();
+          if (uniqueKey !== "-") uniqueAttendees.add(uniqueKey);
         }
-
-        const proportion =
-          recordTotalParticipants > 0 ? p / recordTotalParticipants : 0;
-        const deptCost = recordCost * proportion;
-        const deptHours = duration * p;
-
-        deptStats[alloc.department].spent += deptCost;
-        deptStats[alloc.department].participants += p;
-        deptStats[alloc.department].hours += deptHours;
       });
     });
 
-    // Only chart departments that have actual participants or spending to keep charts clean
     const chartData = Object.values(deptStats).filter(
       (d) => d.participants > 0 || d.spent > 0
     );
@@ -274,40 +289,65 @@ export default function App() {
       totalSpent,
       totalParticipants,
       totalLearningHours,
+      uniqueHeads: uniqueAttendees.size,
       chartData,
       pieData,
     };
   }, [filteredRecords, availableDepartments]);
 
-  // Handlers
+  // --- Handlers ---
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleAllocationChange = (index, field, value) => {
-    const newAllocations = [...formData.allocations];
-    newAllocations[index][field] = value;
-    setFormData((prev) => ({ ...prev, allocations: newAllocations }));
+  const handleAttendeeChange = (index, field, value) => {
+    const newAttendees = [...formData.attendees];
+    newAttendees[index][field] = value;
+
+    // --- AUTO-FILL LOGIC ---
+    if (field === "empId" && value.trim() !== "") {
+      const empData = employeeMaster[value.trim()];
+      if (empData) {
+        newAttendees[index].name = empData.name || "";
+
+        // Auto-select department if it exists, otherwise use 'Other'
+        if (availableDepartments.includes(empData.department)) {
+          newAttendees[index].department = empData.department;
+          newAttendees[index].customDepartment = "";
+        } else {
+          newAttendees[index].department = "Other";
+          newAttendees[index].customDepartment = empData.department || "";
+        }
+
+        showToast(
+          `พนักงาน ${empData.name} ถูกเติมข้อมูลอัตโนมัติแล้ว!`,
+          "success"
+        );
+      }
+    }
+    // -----------------------
+
+    setFormData((prev) => ({ ...prev, attendees: newAttendees }));
   };
 
-  const addAllocation = () => {
+  const addAttendee = () => {
+    const lastDept =
+      formData.attendees.length > 0
+        ? formData.attendees[formData.attendees.length - 1].department
+        : availableDepartments[0] || "Underwriting";
     setFormData((prev) => ({
       ...prev,
-      allocations: [
-        ...prev.allocations,
-        {
-          department: availableDepartments[0] || "Underwriting",
-          customDepartment: "",
-          participants: "",
-        },
+      attendees: [
+        ...prev.attendees,
+        { empId: "", name: "", department: lastDept, customDepartment: "" },
       ],
     }));
   };
 
-  const removeAllocation = (index) => {
-    const newAllocations = formData.allocations.filter((_, i) => i !== index);
-    setFormData((prev) => ({ ...prev, allocations: newAllocations }));
+  const removeAttendee = (index) => {
+    const newAttendees = formData.attendees.filter((_, i) => i !== index);
+    setFormData((prev) => ({ ...prev, attendees: newAttendees }));
   };
 
   const handleBudgetChange = (e) => setAnnualBudget(Number(e.target.value));
@@ -315,8 +355,11 @@ export default function App() {
   const saveBudgetToCloud = async (newBudget) => {
     if (!user) return;
     try {
-      const settingsRef = doc(db, "settings", "budget");
-      await setDoc(settingsRef, { annualBudget: newBudget }, { merge: true });
+      await setDoc(
+        doc(db, "settings", "budget"),
+        { annualBudget: newBudget },
+        { merge: true }
+      );
       showToast("Budget updated successfully!");
     } catch (error) {
       console.error("Error saving budget", error);
@@ -325,7 +368,48 @@ export default function App() {
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 3000); // 3 seconds
+  };
+
+  // --- Master Data Import ---
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target.result;
+        // Basic CSV parsing (Split by line, then comma)
+        const rows = text.split(/\r?\n/);
+        const empData = {};
+        let count = 0;
+
+        rows.forEach((row, i) => {
+          // Skip header row and empty rows
+          if (i === 0 || !row.trim()) return;
+
+          const cols = row.split(",");
+          if (cols.length >= 3) {
+            const id = cols[0].trim();
+            empData[id] = {
+              name: cols[1].trim(),
+              department: cols[2].trim(),
+            };
+            count++;
+          }
+        });
+
+        // Save to Firebase
+        await setDoc(doc(db, "settings", "employee_master"), { data: empData });
+        showToast(`นำเข้าฐานข้อมูลพนักงานสำเร็จแล้ว ${count} คน!`);
+        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset input
+      } catch (err) {
+        console.error("Error parsing CSV:", err);
+        showToast("รูปแบบไฟล์ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง", "error");
+      }
+    };
+    reader.readAsText(file);
   };
 
   const exportToCSV = () => {
@@ -333,28 +417,32 @@ export default function App() {
       "Date",
       "Course",
       "Duration (Hrs)",
-      "Departments Breakdown",
-      "Total Participants",
+      "Total Seats",
       "Total Cost (THB)",
+      "Attendee Details (ID/Name/Dept)",
     ];
     const rows = filteredRecords.map((r) => {
-      const allocs = r.allocations || [
-        { department: r.department, participants: r.participants },
-      ];
-      const breakdown = allocs
-        .map((a) => `${a.department} (${a.participants})`)
-        .join(" | ");
-      const totalP = allocs.reduce((sum, a) => sum + Number(a.participants), 0);
       const cost = r.totalCost || r.cost || 0;
       const duration = r.durationHours || 0;
-      return [
-        r.date,
-        `"${r.course}"`,
-        duration,
-        `"${breakdown}"`,
-        totalP,
-        cost,
-      ];
+      let seats = 0;
+      let details = "Legacy Format";
+
+      if (r.attendees) {
+        seats = r.attendees.length;
+        details = r.attendees
+          .map((a) => `[${a.empId || "-"}] ${a.name || "-"} (${a.department})`)
+          .join(" | ");
+      } else if (r.allocations) {
+        seats = r.allocations.reduce(
+          (sum, a) => sum + Number(a.participants),
+          0
+        );
+        details = r.allocations
+          .map((a) => `${a.department} (${a.participants} pax)`)
+          .join(" | ");
+      }
+
+      return [r.date, `"${r.course}"`, duration, seats, cost, `"${details}"`];
     });
 
     const csvContent =
@@ -371,21 +459,41 @@ export default function App() {
   };
 
   const handleEditClick = (record) => {
+    let initialAttendees = [];
+    if (record.attendees) {
+      initialAttendees = record.attendees.map((a) => ({
+        ...a,
+        customDepartment: "",
+      }));
+    } else if (record.allocations) {
+      record.allocations.forEach((alloc) => {
+        for (let i = 0; i < Number(alloc.participants || 0); i++) {
+          initialAttendees.push({
+            empId: "",
+            name: "Legacy Data",
+            department: alloc.department,
+            customDepartment: "",
+          });
+        }
+      });
+    }
+
     setFormData({
       course: record.course || "",
       date: record.date || "",
       totalCost: record.totalCost || record.cost || "",
       durationHours: record.durationHours || "",
-      // Ensure customDepartment field exists for editing form
-      allocations: (
-        record.allocations || [
-          { department: record.department, participants: record.participants },
-        ]
-      ).map((a) => ({
-        department: a.department,
-        customDepartment: "",
-        participants: a.participants,
-      })),
+      attendees:
+        initialAttendees.length > 0
+          ? initialAttendees
+          : [
+              {
+                empId: "",
+                name: "",
+                department: availableDepartments[0],
+                customDepartment: "",
+              },
+            ],
     });
     setEditingId(record.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -397,11 +505,12 @@ export default function App() {
       date: "",
       totalCost: "",
       durationHours: "",
-      allocations: [
+      attendees: [
         {
+          empId: "",
+          name: "",
           department: availableDepartments[0] || "Underwriting",
           customDepartment: "",
-          participants: "",
         },
       ],
     });
@@ -413,25 +522,23 @@ export default function App() {
     if (!user || !formData.course || !formData.totalCost || !formData.date)
       return;
 
-    // Validate allocations and handle custom departments
-    const validAllocations = [];
-    for (let a of formData.allocations) {
-      if (Number(a.participants) > 0) {
-        // If "Other" is selected, use the custom text input instead
+    const validAttendees = [];
+    for (let a of formData.attendees) {
+      if (a.name.trim() !== "" || a.empId.trim() !== "") {
         const finalDepartment =
           a.department === "Other"
-            ? a.customDepartment.trim() || "Unknown Department"
+            ? a.customDepartment.trim() || "Unknown"
             : a.department;
-
-        validAllocations.push({
+        validAttendees.push({
+          empId: a.empId.trim(),
+          name: a.name.trim(),
           department: finalDepartment,
-          participants: Number(a.participants),
         });
       }
     }
 
-    if (validAllocations.length === 0) {
-      showToast("Please add at least one participant.", "error");
+    if (validAttendees.length === 0) {
+      showToast("กรุณาระบุรายชื่อผู้เข้าร่วมอย่างน้อย 1 คน", "error");
       return;
     }
 
@@ -441,7 +548,7 @@ export default function App() {
       date: formData.date,
       totalCost: Number(formData.totalCost),
       durationHours: Number(formData.durationHours || 0),
-      allocations: validAllocations,
+      attendees: validAttendees,
     };
 
     const currentCost = editingId
@@ -453,19 +560,16 @@ export default function App() {
       metrics.totalSpent - currentCost + newRecord.totalCost > annualBudget;
 
     try {
-      const docRef = doc(db, "training_records", recordId);
-      await setDoc(docRef, newRecord);
+      await setDoc(doc(db, "training_records", recordId), newRecord);
       resetForm();
-
-      if (willExceedBudget) {
+      if (willExceedBudget)
         showToast("Record saved, but warning: Budget exceeded!", "warning");
-      } else {
+      else
         showToast(
           editingId
             ? "Record updated successfully!"
             : "Record added successfully!"
         );
-      }
     } catch (error) {
       console.error("Error saving record:", error);
       showToast("Error saving record", "error");
@@ -475,8 +579,7 @@ export default function App() {
   const deleteRecord = async (id) => {
     if (!user) return;
     try {
-      const docRef = doc(db, "training_records", id);
-      await deleteDoc(docRef);
+      await deleteDoc(doc(db, "training_records", id));
       showToast("Record deleted.");
     } catch (error) {
       console.error("Error deleting record:", error);
@@ -493,6 +596,8 @@ export default function App() {
       </div>
     );
   }
+
+  const loadedEmployeesCount = Object.keys(employeeMaster).length;
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans text-slate-800">
@@ -522,11 +627,17 @@ export default function App() {
             <h1 className="text-3xl font-bold text-slate-900">
               Training Hours & Budget
             </h1>
-            <p className="text-slate-500 mt-1">
-              Track multi-department spending, participation, and learning hours{" "}
-              <span className="text-blue-500 font-medium ml-2 text-sm">
-                (Live Auto-Save ON)
+            <p className="text-slate-500 mt-1 flex items-center gap-2">
+              Track multi-department spending, participation, and learning hours
+              <span className="text-blue-500 font-medium text-sm border-l border-slate-300 pl-2">
+                Live Auto-Save ON
               </span>
+              {loadedEmployeesCount > 0 && (
+                <span className="text-emerald-600 font-medium text-sm flex items-center border-l border-slate-300 pl-2">
+                  <Database size={14} className="mr-1" /> {loadedEmployeesCount}{" "}
+                  Employees Loaded
+                </span>
+              )}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -564,83 +675,100 @@ export default function App() {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-            <div className="p-3 bg-blue-100 text-blue-600 rounded-lg">
-              <DollarSign size={24} />
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
+            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+              <DollarSign size={20} />
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <p className="text-[10px] font-bold text-slate-500 uppercase">
                 Total Spent
               </p>
-              <h3 className="text-2xl font-bold text-slate-800">
-                ฿{metrics.totalSpent.toLocaleString("th-TH")}
+              <h3 className="text-lg font-bold text-slate-800">
+                ฿{metrics.totalSpent.toLocaleString()}
               </h3>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-            <div className="p-3 bg-emerald-100 text-emerald-600 rounded-lg">
-              <TrendingUp size={24} />
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
+            <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">
+              <TrendingUp size={20} />
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <p className="text-[10px] font-bold text-slate-500 uppercase">
                 Remaining
               </p>
               <h3
-                className={`text-2xl font-bold ${
+                className={`text-lg font-bold ${
                   annualBudget - metrics.totalSpent < 0
                     ? "text-red-500"
                     : "text-slate-800"
                 }`}
               >
-                ฿{(annualBudget - metrics.totalSpent).toLocaleString("th-TH")}
+                ฿{(annualBudget - metrics.totalSpent).toLocaleString()}
               </h3>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-            <div className="p-3 bg-amber-100 text-amber-600 rounded-lg">
-              <Users size={24} />
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
+            <div className="p-2 bg-pink-100 text-pink-600 rounded-lg">
+              <UserCheck size={20} />
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
-                Participants
+              <p className="text-[10px] font-bold text-slate-500 uppercase">
+                Unique Trained
               </p>
-              <h3 className="text-2xl font-bold text-slate-800">
+              <h3 className="text-lg font-bold text-slate-800">
+                {metrics.uniqueHeads}{" "}
+                <span className="text-xs font-normal text-slate-500">
+                  Heads
+                </span>
+              </h3>
+            </div>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
+            <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
+              <Users size={20} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase">
+                Total Seats Filled
+              </p>
+              <h3 className="text-lg font-bold text-slate-800">
                 {metrics.totalParticipants}
               </h3>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-            <div className="p-3 bg-indigo-100 text-indigo-600 rounded-lg">
-              <Clock size={24} />
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
+            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+              <Clock size={20} />
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <p className="text-[10px] font-bold text-slate-500 uppercase">
                 Learning Hours
               </p>
-              <h3 className="text-2xl font-bold text-slate-800">
+              <h3 className="text-lg font-bold text-slate-800">
                 {metrics.totalLearningHours.toLocaleString()}
               </h3>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
-            <div className="p-3 bg-purple-100 text-purple-600 rounded-lg">
-              <BookOpen size={24} />
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
+            <div className="p-2 bg-purple-100 text-purple-600 rounded-lg">
+              <BookOpen size={20} />
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
-                Avg Cost/Pax
+              <p className="text-[10px] font-bold text-slate-500 uppercase">
+                Cost/Seat
               </p>
-              <h3 className="text-2xl font-bold text-slate-800">
+              <h3 className="text-lg font-bold text-slate-800">
                 ฿
                 {metrics.totalParticipants
                   ? Math.round(
                       metrics.totalSpent / metrics.totalParticipants
-                    ).toLocaleString("th-TH")
+                    ).toLocaleString()
                   : 0}
               </h3>
             </div>
@@ -676,14 +804,12 @@ export default function App() {
                   <YAxis
                     axisLine={false}
                     tickLine={false}
-                    tickFormatter={(value) =>
-                      `฿${value.toLocaleString("th-TH")}`
-                    }
+                    tickFormatter={(value) => `฿${value.toLocaleString()}`}
                   />
                   <RechartsTooltip
                     cursor={{ fill: "transparent" }}
                     formatter={(value) =>
-                      `฿${Math.round(value).toLocaleString("th-TH")}`
+                      `฿${Math.round(value).toLocaleString()}`
                     }
                   />
                   <Bar
@@ -732,8 +858,8 @@ export default function App() {
           {/* Input Form */}
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-fit xl:col-span-1">
             <h3 className="text-lg font-bold mb-4 flex items-center">
-              <PlusCircle size={20} className="mr-2 text-blue-600" /> Add Mixed
-              Training
+              <PlusCircle size={20} className="mr-2 text-blue-600" /> Add
+              Training Record
             </h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -799,94 +925,96 @@ export default function App() {
                 />
               </div>
 
-              {/* Dynamic Allocations */}
+              {/* Individual Attendees Section */}
               <div className="pt-2 border-t border-slate-100">
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-sm font-medium text-slate-700">
-                    Departments Attending
+                    รายชื่อผู้เข้าร่วม (Attendees)
                   </label>
                   <button
                     type="button"
-                    onClick={addAllocation}
+                    onClick={addAttendee}
                     className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center bg-blue-50 px-2 py-1 rounded"
                   >
-                    + Add Dept
+                    + Add Person
                   </button>
                 </div>
 
-                <div className="space-y-2">
-                  {formData.allocations.map((alloc, index) => (
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {formData.attendees.map((attendee, index) => (
                     <div
                       key={index}
-                      className="flex flex-col gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg"
+                      className="flex flex-col gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg relative group"
                     >
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={alloc.department}
-                          onChange={(e) =>
-                            handleAllocationChange(
-                              index,
-                              "department",
-                              e.target.value
-                            )
-                          }
-                          className="flex-1 min-w-0 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      {formData.attendees.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeAttendee(index)}
+                          className="absolute -top-2 -right-2 bg-white rounded-full p-1 text-slate-400 hover:text-red-500 shadow-sm border border-slate-200 opacity-0 group-hover:opacity-100 transition-opacity"
                         >
-                          {availableDepartments.map((d) => (
-                            <option key={d} value={d}>
-                              {d}
-                            </option>
-                          ))}
-                          <option
-                            value="Other"
-                            className="font-semibold text-blue-600"
-                          >
-                            + เพิ่มแผนกใหม่ (Other)
-                          </option>
-                        </select>
+                          <X size={14} />
+                        </button>
+                      )}
+
+                      <div className="flex gap-2">
                         <input
-                          type="number"
-                          min="1"
-                          placeholder="Pax"
-                          value={alloc.participants}
+                          type="text"
+                          placeholder="Emp ID"
+                          value={attendee.empId}
                           onChange={(e) =>
-                            handleAllocationChange(
+                            handleAttendeeChange(index, "empId", e.target.value)
+                          }
+                          className="w-1/3 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white placeholder:text-blue-300"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Name - Surname"
+                          value={attendee.name}
+                          onChange={(e) =>
+                            handleAttendeeChange(index, "name", e.target.value)
+                          }
+                          className="w-2/3 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        />
+                      </div>
+                      <select
+                        value={attendee.department}
+                        onChange={(e) =>
+                          handleAttendeeChange(
+                            index,
+                            "department",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      >
+                        {availableDepartments.map((d) => (
+                          <option key={d} value={d}>
+                            {d}
+                          </option>
+                        ))}
+                        <option
+                          value="Other"
+                          className="font-semibold text-blue-600"
+                        >
+                          + เพิ่มแผนกใหม่ (Other)
+                        </option>
+                      </select>
+
+                      {attendee.department === "Other" && (
+                        <input
+                          type="text"
+                          placeholder="พิมพ์ชื่อแผนกใหม่ที่นี่..."
+                          required
+                          value={attendee.customDepartment}
+                          onChange={(e) =>
+                            handleAttendeeChange(
                               index,
-                              "participants",
+                              "customDepartment",
                               e.target.value
                             )
                           }
-                          className="w-16 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-2 py-1.5 text-sm border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                         />
-                        {formData.allocations.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeAllocation(index)}
-                            className="p-1 text-slate-400 hover:text-red-500"
-                          >
-                            <X size={16} />
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Show text input ONLY if "Other" is selected */}
-                      {alloc.department === "Other" && (
-                        <div className="mt-1">
-                          <input
-                            type="text"
-                            placeholder="พิมพ์ชื่อแผนกใหม่ที่นี่..."
-                            required
-                            value={alloc.customDepartment}
-                            onChange={(e) =>
-                              handleAllocationChange(
-                                index,
-                                "customDepartment",
-                                e.target.value
-                              )
-                            }
-                            className="w-full px-3 py-1.5 text-sm border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                          />
-                        </div>
                       )}
                     </div>
                   ))}
@@ -922,17 +1050,36 @@ export default function App() {
             <div className="p-6 border-b border-slate-100 flex flex-wrap gap-4 justify-between items-center">
               <div className="flex items-center gap-3">
                 <h3 className="text-lg font-bold">Raw Data Log</h3>
-                <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100 hidden sm:inline-block">
-                  Live Sync Active
-                </span>
               </div>
-              <button
-                onClick={exportToCSV}
-                className="flex items-center space-x-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                <Download size={16} />
-                <span>Export CSV</span>
-              </button>
+
+              {/* Added Button Group for CSV Import/Export */}
+              <div className="flex items-center gap-2">
+                {/* Hidden File Input */}
+                <input
+                  type="file"
+                  accept=".csv"
+                  id="csv-upload"
+                  ref={fileInputRef}
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+                <label
+                  htmlFor="csv-upload"
+                  className="flex items-center space-x-2 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-emerald-200"
+                  title="Upload Employee Master List (CSV)"
+                >
+                  <UploadCloud size={16} />
+                  <span>Import Emp. DB</span>
+                </label>
+
+                <button
+                  onClick={exportToCSV}
+                  className="flex items-center space-x-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors border border-blue-200"
+                >
+                  <Download size={16} />
+                  <span>Export CSV</span>
+                </button>
+              </div>
             </div>
             <div className="overflow-x-auto flex-1 p-0">
               <table className="w-full text-left border-collapse">
@@ -940,7 +1087,7 @@ export default function App() {
                   <tr className="bg-slate-50 text-slate-500 text-sm uppercase tracking-wider">
                     <th className="p-4 font-medium">Date</th>
                     <th className="p-4 font-medium">Course</th>
-                    <th className="p-4 font-medium">Departments (Pax)</th>
+                    <th className="p-4 font-medium">Seats Filled</th>
                     <th className="p-4 font-medium text-right">Hours</th>
                     <th className="p-4 font-medium text-right">Cost (฿)</th>
                     <th className="p-4 font-medium text-center">Actions</th>
@@ -958,17 +1105,14 @@ export default function App() {
                     </tr>
                   ) : (
                     filteredRecords.map((record) => {
-                      // Normalize allocations for display
-                      const allocs = record.allocations || [
-                        {
-                          department: record.department,
-                          participants: record.participants,
-                        },
-                      ];
-                      const totalP = allocs.reduce(
-                        (sum, a) => sum + Number(a.participants || 0),
-                        0
-                      );
+                      let seats = 0;
+                      if (record.attendees) seats = record.attendees.length;
+                      else if (record.allocations)
+                        seats = record.allocations.reduce(
+                          (sum, a) => sum + Number(a.participants),
+                          0
+                        );
+
                       const cost = record.totalCost || record.cost || 0;
                       const duration = record.durationHours || 0;
 
@@ -986,28 +1130,18 @@ export default function App() {
                             {record.course}
                           </td>
                           <td className="p-4">
-                            <div className="flex flex-wrap gap-1">
-                              {allocs.map((a, i) => (
-                                <span
-                                  key={i}
-                                  className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-medium whitespace-nowrap"
-                                >
-                                  {a.department}{" "}
-                                  <span className="opacity-60 ml-1">
-                                    ({a.participants})
-                                  </span>
-                                </span>
-                              ))}
-                            </div>
+                            <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-medium whitespace-nowrap">
+                              {seats} Persons
+                            </span>
                           </td>
                           <td className="p-4 text-right whitespace-nowrap text-slate-600">
                             {duration}h{" "}
                             <span className="opacity-50 text-xs">
-                              x {totalP}
+                              x {seats}
                             </span>
                           </td>
                           <td className="p-4 text-right text-slate-600">
-                            ฿{cost.toLocaleString("th-TH")}
+                            ฿{cost.toLocaleString()}
                           </td>
                           <td className="p-4 flex justify-center space-x-1">
                             <button
