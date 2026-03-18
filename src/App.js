@@ -30,6 +30,9 @@ import {
   UploadCloud,
   Database,
   Target,
+  Trophy,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import {
@@ -105,12 +108,13 @@ export default function App() {
   // Data States
   const [records, setRecords] = useState([]);
   const [annualBudget, setAnnualBudget] = useState(1000000);
-  const [employeeMaster, setEmployeeMaster] = useState({}); // เก็บฐานข้อมูลพนักงาน
+  const [employeeMaster, setEmployeeMaster] = useState({});
 
   // UI States
   const [editingId, setEditingId] = useState(null);
   const [filterYear, setFilterYear] = useState("All");
   const [toast, setToast] = useState(null);
+  const [expandedRows, setExpandedRows] = useState(new Set());
   const fileInputRef = useRef(null);
 
   // Form State
@@ -301,6 +305,43 @@ export default function App() {
     };
   }, [filteredRecords, availableDepartments]);
 
+  // --- LEADERBOARD CALCULATION ---
+  const leaderboard = useMemo(() => {
+    const employeeStats = {};
+
+    filteredRecords.forEach((record) => {
+      const duration = Number(record.durationHours || 0);
+      if (record.attendees) {
+        record.attendees.forEach((person) => {
+          if (!person.isLegacy && (person.empId || person.name)) {
+            // สร้าง Key ด้วย ID หรือ ชื่อ เพื่อระบุตัวตน
+            const uniqueKey = `${person.empId?.trim() || ""}|${
+              person.name?.trim() || ""
+            }`;
+            if (uniqueKey !== "|") {
+              if (!employeeStats[uniqueKey]) {
+                employeeStats[uniqueKey] = {
+                  empId: person.empId,
+                  name: person.name,
+                  department: person.department,
+                  totalHours: 0,
+                  courses: 0,
+                };
+              }
+              employeeStats[uniqueKey].totalHours += duration;
+              employeeStats[uniqueKey].courses += 1;
+            }
+          }
+        });
+      }
+    });
+
+    // เรียงจากชั่วโมงเรียนมากไปน้อย แล้วตัดมาแค่ Top 5
+    return Object.values(employeeStats)
+      .sort((a, b) => b.totalHours - a.totalHours)
+      .slice(0, 5);
+  }, [filteredRecords]);
+
   // --- Handlers ---
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -312,12 +353,10 @@ export default function App() {
     newAttendees[index][field] = value;
 
     // --- AUTO-FILL LOGIC ---
-    // 1. ค้นหาด้วยรหัสพนักงาน (Emp ID)
     if (field === "empId" && value.trim() !== "") {
       const empData = employeeMaster[value.trim()];
       if (empData) {
         newAttendees[index].name = empData.name || "";
-
         if (availableDepartments.includes(empData.department)) {
           newAttendees[index].department = empData.department;
           newAttendees[index].customDepartment = "";
@@ -325,23 +364,14 @@ export default function App() {
           newAttendees[index].department = "Other";
           newAttendees[index].customDepartment = empData.department || "";
         }
-
-        showToast(
-          `พนักงาน ${empData.name} ถูกเติมข้อมูลอัตโนมัติแล้ว!`,
-          "success"
-        );
       }
-    }
-    // 2. ค้นหาด้วยชื่อ (Name) - ดึง ID และแผนกกลับมาเติม
-    else if (field === "name" && value.trim() !== "") {
+    } else if (field === "name" && value.trim() !== "") {
       const matchedEntry = Object.entries(employeeMaster).find(
         ([id, data]) => data.name === value.trim()
       );
-
       if (matchedEntry) {
         const [empId, empData] = matchedEntry;
-        newAttendees[index].empId = empId; // เติมรหัสพนักงานให้อัตโนมัติ
-
+        newAttendees[index].empId = empId;
         if (availableDepartments.includes(empData.department)) {
           newAttendees[index].department = empData.department;
           newAttendees[index].customDepartment = "";
@@ -349,8 +379,6 @@ export default function App() {
           newAttendees[index].department = "Other";
           newAttendees[index].customDepartment = empData.department || "";
         }
-
-        showToast(`ข้อมูลของ ${empData.name} ถูกเติมอัตโนมัติแล้ว!`, "success");
       }
     }
     // -----------------------
@@ -398,6 +426,14 @@ export default function App() {
     setTimeout(() => setToast(null), 3000); // 3 seconds
   };
 
+  // --- Toggle Expandable Row ---
+  const toggleRow = (id) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(id)) newExpanded.delete(id);
+    else newExpanded.add(id);
+    setExpandedRows(newExpanded);
+  };
+
   // --- Master Data Import ---
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -407,30 +443,23 @@ export default function App() {
     reader.onload = async (event) => {
       try {
         const text = event.target.result;
-        // Basic CSV parsing (Split by line, then comma)
         const rows = text.split(/\r?\n/);
         const empData = {};
         let count = 0;
 
         rows.forEach((row, i) => {
-          // Skip header row and empty rows
           if (i === 0 || !row.trim()) return;
-
           const cols = row.split(",");
           if (cols.length >= 3) {
             const id = cols[0].trim();
-            empData[id] = {
-              name: cols[1].trim(),
-              department: cols[2].trim(),
-            };
+            empData[id] = { name: cols[1].trim(), department: cols[2].trim() };
             count++;
           }
         });
 
-        // Save to Firebase
         await setDoc(doc(db, "settings", "employee_master"), { data: empData });
         showToast(`นำเข้าฐานข้อมูลพนักงานสำเร็จแล้ว ${count} คน!`);
-        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset input
+        if (fileInputRef.current) fileInputRef.current.value = "";
       } catch (err) {
         console.error("Error parsing CSV:", err);
         showToast("รูปแบบไฟล์ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง", "error");
@@ -821,13 +850,13 @@ export default function App() {
           </div>
         </div>
 
-        {/* Charts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-2">
+        {/* Charts Section - Now a 4 column layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-2 flex flex-col">
             <h3 className="text-lg font-bold mb-4">
               Proportional Spent by Department (THB)
             </h3>
-            <div className="h-[420px]">
+            <div className="h-[360px] flex-1">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={metrics.chartData}
@@ -869,17 +898,17 @@ export default function App() {
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-1 flex flex-col">
             <h3 className="text-lg font-bold mb-4">Learning Hours by Dept</h3>
-            <div className="h-[420px]">
+            <div className="h-[360px] flex-1">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={metrics.pieData}
                     cx="50%"
                     cy="40%"
-                    innerRadius={60}
-                    outerRadius={90}
+                    innerRadius={50}
+                    outerRadius={80}
                     paddingAngle={5}
                     dataKey="hours"
                     nameKey="name"
@@ -896,7 +925,7 @@ export default function App() {
                     content={(props) => {
                       const { payload } = props;
                       return (
-                        <ul className="flex flex-wrap justify-center gap-x-3 gap-y-2 text-xs mt-2 max-h-[160px] overflow-y-auto px-2 custom-scrollbar">
+                        <ul className="flex flex-wrap justify-center gap-x-3 gap-y-2 text-xs mt-2 max-h-[140px] overflow-y-auto px-2 custom-scrollbar">
                           {payload.map((entry, index) => (
                             <li
                               key={`item-${index}`}
@@ -915,6 +944,73 @@ export default function App() {
                   />
                 </PieChart>
               </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* New Leaderboard Widget */}
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-1 flex flex-col">
+            <h3 className="text-lg font-bold mb-4 flex items-center text-slate-800">
+              <Trophy size={20} className="mr-2 text-amber-500" /> Top 5
+              Learners
+            </h3>
+            <div className="flex-1 overflow-y-auto h-[360px]">
+              {leaderboard.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                  <BookOpen size={32} className="mb-2 opacity-50" />
+                  <p className="text-sm">ยังไม่มีข้อมูลการอบรม</p>
+                </div>
+              ) : (
+                <ul className="space-y-4 pr-2">
+                  {leaderboard.map((learner, index) => (
+                    <li
+                      key={index}
+                      className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100 hover:border-blue-200 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <div
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0
+                          ${
+                            index === 0
+                              ? "bg-amber-400 shadow-sm shadow-amber-200"
+                              : index === 1
+                              ? "bg-slate-300 shadow-sm shadow-slate-200"
+                              : index === 2
+                              ? "bg-amber-600 shadow-sm shadow-amber-200"
+                              : "bg-blue-100 text-blue-600"
+                          }`}
+                        >
+                          {index + 1}
+                        </div>
+                        <div className="min-w-0">
+                          <p
+                            className="text-sm font-bold text-slate-800 truncate"
+                            title={learner.name || learner.empId}
+                          >
+                            {learner.name || learner.empId || "Unknown"}
+                          </p>
+                          <p
+                            className="text-[10px] text-slate-500 truncate"
+                            title={learner.department}
+                          >
+                            {learner.department}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0 ml-2">
+                        <p className="text-sm font-bold text-indigo-600">
+                          {learner.totalHours}{" "}
+                          <span className="text-xs font-normal text-indigo-400">
+                            h
+                          </span>
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          {learner.courses} courses
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         </div>
@@ -1006,7 +1102,6 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Datalist ซ่อนอยู่หลังบ้าน สำหรับ Auto-suggest รายชื่อ */}
                 <datalist id="employee-names-list">
                   {Object.values(employeeMaster).map((emp, idx) => (
                     <option key={idx} value={emp.name} />
@@ -1126,9 +1221,7 @@ export default function App() {
                 <h3 className="text-lg font-bold">Raw Data Log</h3>
               </div>
 
-              {/* Added Button Group for CSV Import/Export */}
               <div className="flex items-center gap-2">
-                {/* Hidden File Input */}
                 <input
                   type="file"
                   accept=".csv"
@@ -1189,51 +1282,135 @@ export default function App() {
 
                       const cost = record.totalCost || record.cost || 0;
                       const duration = record.durationHours || 0;
+                      const isExpanded = expandedRows.has(record.id);
 
                       return (
-                        <tr
-                          key={record.id}
-                          className={`hover:bg-slate-50 transition-colors ${
-                            editingId === record.id ? "bg-amber-50" : ""
-                          }`}
-                        >
-                          <td className="p-4 whitespace-nowrap text-slate-500">
-                            {record.date}
-                          </td>
-                          <td className="p-4 font-medium text-slate-800">
-                            {record.course}
-                          </td>
-                          <td className="p-4">
-                            <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-medium whitespace-nowrap">
-                              {seats} Persons
-                            </span>
-                          </td>
-                          <td className="p-4 text-right whitespace-nowrap text-slate-600">
-                            {duration}h{" "}
-                            <span className="opacity-50 text-xs">
-                              x {seats}
-                            </span>
-                          </td>
-                          <td className="p-4 text-right text-slate-600">
-                            ฿{cost.toLocaleString()}
-                          </td>
-                          <td className="p-4 flex justify-center space-x-1">
-                            <button
-                              onClick={() => handleEditClick(record)}
-                              className="p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
-                              title="Edit"
-                            >
-                              <Edit2 size={16} />
-                            </button>
-                            <button
-                              onClick={() => deleteRecord(record.id)}
-                              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Delete"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </td>
-                        </tr>
+                        <React.Fragment key={record.id}>
+                          <tr
+                            className={`hover:bg-slate-50 transition-colors ${
+                              editingId === record.id ? "bg-amber-50" : ""
+                            } ${isExpanded ? "bg-blue-50/40" : ""}`}
+                          >
+                            <td className="p-4 whitespace-nowrap text-slate-500 flex items-center gap-2">
+                              <button
+                                onClick={() => toggleRow(record.id)}
+                                className="p-1 rounded hover:bg-slate-200 text-slate-500 transition-colors"
+                              >
+                                {isExpanded ? (
+                                  <ChevronDown size={16} />
+                                ) : (
+                                  <ChevronRight size={16} />
+                                )}
+                              </button>
+                              {record.date}
+                            </td>
+                            <td className="p-4 font-medium text-slate-800">
+                              {record.course}
+                            </td>
+                            <td className="p-4">
+                              <span
+                                className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-medium whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors border border-slate-200"
+                                onClick={() => toggleRow(record.id)}
+                                title="Click to see attendees"
+                              >
+                                {seats} Persons
+                              </span>
+                            </td>
+                            <td className="p-4 text-right whitespace-nowrap text-slate-600">
+                              {duration}h{" "}
+                              <span className="opacity-50 text-xs">
+                                x {seats}
+                              </span>
+                            </td>
+                            <td className="p-4 text-right text-slate-600">
+                              ฿{cost.toLocaleString()}
+                            </td>
+                            <td className="p-4 flex justify-center space-x-1">
+                              <button
+                                onClick={() => handleEditClick(record)}
+                                className="p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
+                                title="Edit"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button
+                                onClick={() => deleteRecord(record.id)}
+                                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Delete"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          </tr>
+
+                          {/* Expanded Row Details */}
+                          {isExpanded && (
+                            <tr className="bg-slate-50/50 border-b border-slate-100">
+                              <td colSpan="6" className="p-4 pl-12">
+                                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                                  <h4 className="text-xs font-bold text-slate-500 uppercase mb-3">
+                                    Attendee List ({seats} Persons)
+                                  </h4>
+
+                                  {record.attendees &&
+                                  record.attendees.length > 0 ? (
+                                    <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                      {record.attendees.map((a, idx) => (
+                                        <li
+                                          key={idx}
+                                          className="flex items-start p-2 bg-slate-50 border border-slate-100 rounded-md"
+                                        >
+                                          <UserCheck
+                                            size={14}
+                                            className="mt-0.5 mr-2 text-emerald-500 flex-shrink-0"
+                                          />
+                                          <div className="min-w-0">
+                                            <p
+                                              className="text-sm font-medium text-slate-800 truncate"
+                                              title={a.name || a.empId}
+                                            >
+                                              {a.empId ? `[${a.empId}] ` : ""}
+                                              {a.name || "Unknown Name"}
+                                            </p>
+                                            <p
+                                              className="text-[10px] text-slate-500 truncate mt-0.5"
+                                              title={a.department}
+                                            >
+                                              {a.department}
+                                            </p>
+                                          </div>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    <div className="flex flex-wrap gap-2">
+                                      {record.allocations?.map((a, idx) => (
+                                        <span
+                                          key={idx}
+                                          className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-md text-sm border border-slate-200"
+                                        >
+                                          {a.department}{" "}
+                                          <span className="font-semibold text-slate-800 ml-1">
+                                            {a.participants} pax
+                                          </span>
+                                        </span>
+                                      ))}
+                                      {!record.allocations &&
+                                        record.department && (
+                                          <span className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-md text-sm border border-slate-200">
+                                            {record.department}{" "}
+                                            <span className="font-semibold text-slate-800 ml-1">
+                                              {record.participants} pax
+                                            </span>
+                                          </span>
+                                        )}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })
                   )}
