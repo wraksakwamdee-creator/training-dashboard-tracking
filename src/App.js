@@ -312,12 +312,12 @@ export default function App() {
     newAttendees[index][field] = value;
 
     // --- AUTO-FILL LOGIC ---
+    // 1. ค้นหาด้วยรหัสพนักงาน (Emp ID)
     if (field === "empId" && value.trim() !== "") {
       const empData = employeeMaster[value.trim()];
       if (empData) {
         newAttendees[index].name = empData.name || "";
 
-        // Auto-select department if it exists, otherwise use 'Other'
         if (availableDepartments.includes(empData.department)) {
           newAttendees[index].department = empData.department;
           newAttendees[index].customDepartment = "";
@@ -330,6 +330,27 @@ export default function App() {
           `พนักงาน ${empData.name} ถูกเติมข้อมูลอัตโนมัติแล้ว!`,
           "success"
         );
+      }
+    }
+    // 2. ค้นหาด้วยชื่อ (Name) - ดึง ID และแผนกกลับมาเติม
+    else if (field === "name" && value.trim() !== "") {
+      const matchedEntry = Object.entries(employeeMaster).find(
+        ([id, data]) => data.name === value.trim()
+      );
+
+      if (matchedEntry) {
+        const [empId, empData] = matchedEntry;
+        newAttendees[index].empId = empId; // เติมรหัสพนักงานให้อัตโนมัติ
+
+        if (availableDepartments.includes(empData.department)) {
+          newAttendees[index].department = empData.department;
+          newAttendees[index].customDepartment = "";
+        } else {
+          newAttendees[index].department = "Other";
+          newAttendees[index].customDepartment = empData.department || "";
+        }
+
+        showToast(`ข้อมูลของ ${empData.name} ถูกเติมอัตโนมัติแล้ว!`, "success");
       }
     }
     // -----------------------
@@ -985,6 +1006,13 @@ export default function App() {
                   </button>
                 </div>
 
+                {/* Datalist ซ่อนอยู่หลังบ้าน สำหรับ Auto-suggest รายชื่อ */}
+                <datalist id="employee-names-list">
+                  {Object.values(employeeMaster).map((emp, idx) => (
+                    <option key={idx} value={emp.name} />
+                  ))}
+                </datalist>
+
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                   {formData.attendees.map((attendee, index) => (
                     <div
@@ -1014,6 +1042,7 @@ export default function App() {
                         <input
                           type="text"
                           placeholder="Name - Surname"
+                          list="employee-names-list"
                           value={attendee.name}
                           onChange={(e) =>
                             handleAttendeeChange(index, "name", e.target.value)
