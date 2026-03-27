@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, 
-  PieChart, Pie, Cell 
+  PieChart, Pie, Cell, LineChart, Line 
 } from 'recharts';
-import { DollarSign, Users, BookOpen, TrendingUp, Trash2, PlusCircle, Loader2, Download, Edit2, AlertCircle, CheckCircle, Clock, X, UserCheck, UploadCloud, Database, Target, Trophy, ChevronDown, ChevronRight, PartyPopper } from 'lucide-react';
+import { DollarSign, Users, BookOpen, TrendingUp, Trash2, PlusCircle, Loader2, Download, Edit2, AlertCircle, CheckCircle, Clock, X, UserCheck, UploadCloud, Database, Target, Trophy, ChevronDown, ChevronRight, PartyPopper, Search, ChevronLeft, AlertTriangle, Calendar, User, Activity } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
@@ -50,6 +50,18 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [showSpentBreakdown, setShowSpentBreakdown] = useState(false);
+  
+  // Feature 1: Search & Pagination States
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 10;
+
+  // Feature 3: Delete Confirmation State
+  const [recordToDelete, setRecordToDelete] = useState(null);
+
+  // Feature 5: Individual Profile View State
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+
   const fileInputRef = useRef(null);
 
   // Form State
@@ -139,6 +151,35 @@ export default function App() {
     return records.filter(r => r.date?.startsWith(filterYear));
   }, [records, filterYear]);
 
+  // --- Feature 1: Search & Pagination Derived Data ---
+  const searchedRecords = useMemo(() => {
+    if (!searchTerm.trim()) return filteredRecords;
+    const lowerTerm = searchTerm.toLowerCase();
+    return filteredRecords.filter(r => 
+      r.course?.toLowerCase().includes(lowerTerm) ||
+      r.date?.includes(lowerTerm) ||
+      r.type?.toLowerCase().includes(lowerTerm)
+    );
+  }, [filteredRecords, searchTerm]);
+
+  const totalPages = Math.ceil(searchedRecords.length / rowsPerPage) || 1;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterYear]);
+
+  const paginatedRecords = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return searchedRecords.slice(start, start + rowsPerPage);
+  }, [searchedRecords, currentPage]);
+
+  // --- Feature 4: Duplicate Attendees Check ---
+  const duplicateEmpIds = useMemo(() => {
+    const ids = formData.attendees.map(a => a.empId.trim()).filter(id => id !== '');
+    const duplicates = ids.filter((item, index) => ids.indexOf(item) !== index);
+    return new Set(duplicates);
+  }, [formData.attendees]);
+
   // Core Metrics Calculation
   const metrics = useMemo(() => {
     let totalSpent = 0;
@@ -177,7 +218,6 @@ export default function App() {
       const recordTotalParticipants = attendeesList.length;
       totalSpent += recordCost;
       
-      // แยกงบค่าใช้จ่ายตามประเภทกิจกรรม และนับ Seat เฉพาะ Training
       if (isEngagement) {
         engagementSpent += recordCost;
       } else {
@@ -192,10 +232,8 @@ export default function App() {
         const dept = person.department || 'Unknown';
         if (!deptStats[dept]) deptStats[dept] = { name: dept, spent: 0, participants: 0, hours: 0 };
         
-        // ค่าใช้จ่ายยังคงถูกปันส่วนเข้าแต่ละแผนกไม่ว่าจะเป็น Train หรือ Engage
         deptStats[dept].spent += costPerPerson;
         
-        // นับคนและชั่วโมงเฉพาะกิจกรรม Training
         if (!isEngagement) {
           deptStats[dept].participants += 1;
           deptStats[dept].hours += duration;
@@ -209,23 +247,51 @@ export default function App() {
     });
 
     const chartData = Object.values(deptStats).filter(d => d.participants > 0 || d.spent > 0);
-    const pieData = chartData.filter(d => d.hours > 0); // โชว์เฉพาะแผนกที่มีชั่วโมงเรียน
+    const pieData = chartData.filter(d => d.hours > 0); 
 
     return { totalSpent, trainingSpent, engagementSpent, totalParticipants, totalLearningHours, uniqueHeads: uniqueAttendees.size, chartData, pieData };
   }, [filteredRecords, availableDepartments]);
+
+  // --- Feature 2: Monthly Trend Data Calculation ---
+  const monthlyTrendData = useMemo(() => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const data = months.map(m => ({ month: m, trainingSpent: 0, engagementSpent: 0, hours: 0 }));
+
+    filteredRecords.forEach(record => {
+      if (!record.date) return;
+      const monthIndex = parseInt(record.date.split('-')[1], 10) - 1;
+      
+      if (monthIndex >= 0 && monthIndex < 12) {
+        const cost = Number(record.totalCost || record.cost || 0);
+        const isEngagement = record.type === 'Engagement';
+        const duration = isEngagement ? 0 : Number(record.durationHours || 0);
+        
+        let pax = 0;
+        if (record.attendees) pax = record.attendees.length;
+        else if (record.allocations) pax = record.allocations.reduce((sum, a) => sum + Number(a.participants), 0);
+
+        if (isEngagement) {
+          data[monthIndex].engagementSpent += cost;
+        } else {
+          data[monthIndex].trainingSpent += cost;
+          data[monthIndex].hours += (duration * pax);
+        }
+      }
+    });
+    return data;
+  }, [filteredRecords]);
 
   // --- LEADERBOARD CALCULATION ---
   const leaderboard = useMemo(() => {
     const employeeStats = {};
     
     filteredRecords.forEach(record => {
-      if (record.type === 'Engagement') return; // ข้ามกิจกรรม Engagement ไม่เอามาคิด Leaderboard
+      if (record.type === 'Engagement') return; 
 
       const duration = Number(record.durationHours || 0);
       if (record.attendees) {
         record.attendees.forEach(person => {
           if (!person.isLegacy && (person.empId || person.name)) {
-            // สร้าง Key ด้วย ID หรือ ชื่อ เพื่อระบุตัวตน
             const uniqueKey = `${person.empId?.trim() || ''}|${person.name?.trim() || ''}`;
             if (uniqueKey !== '|') {
               if (!employeeStats[uniqueKey]) {
@@ -245,11 +311,56 @@ export default function App() {
       }
     });
 
-    // เรียงจากชั่วโมงเรียนมากไปน้อย แล้วตัดมาแค่ Top 5
     return Object.values(employeeStats)
       .sort((a, b) => b.totalHours - a.totalHours)
       .slice(0, 5);
   }, [filteredRecords]);
+
+  // --- Feature 5: Employee Profile Calculation ---
+  const employeeProfileData = useMemo(() => {
+    if (!selectedEmployee) return null;
+    const { empId, name, department } = selectedEmployee;
+    const history = [];
+    let totalHrs = 0;
+    let totalTrainings = 0;
+    let totalEngagements = 0;
+
+    filteredRecords.forEach(record => {
+      if (!record.attendees) return; 
+      
+      const attended = record.attendees.find(a => 
+        !a.isLegacy && ((empId && a.empId === empId) || (name && a.name === name))
+      );
+
+      if (attended) {
+        const isEngagement = record.type === 'Engagement';
+        const hrs = isEngagement ? 0 : Number(record.durationHours || 0);
+        totalHrs += hrs;
+        
+        if (isEngagement) totalEngagements++;
+        else totalTrainings++;
+
+        history.push({
+          date: record.date,
+          course: record.course,
+          type: record.type || 'Training',
+          hours: hrs
+        });
+      }
+    });
+    
+    history.sort((a,b) => new Date(b.date) - new Date(a.date));
+
+    return {
+      empId,
+      name,
+      department,
+      totalHours: totalHrs,
+      totalTrainings,
+      totalEngagements,
+      history
+    };
+  }, [selectedEmployee, filteredRecords]);
 
 
   // --- Handlers ---
@@ -291,7 +402,6 @@ export default function App() {
         }
       }
     }
-    // -----------------------
 
     setFormData(prev => ({ ...prev, attendees: newAttendees }));
   };
@@ -339,10 +449,9 @@ export default function App() {
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3000); // 3 seconds
+    setTimeout(() => setToast(null), 3000); 
   };
 
-  // --- Toggle Expandable Row ---
   const toggleRow = (id) => {
     const newExpanded = new Set(expandedRows);
     if (newExpanded.has(id)) newExpanded.delete(id);
@@ -350,7 +459,6 @@ export default function App() {
     setExpandedRows(newExpanded);
   };
 
-  // --- Master Data Import ---
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -452,6 +560,11 @@ export default function App() {
     e.preventDefault();
     if (!user || !formData.course || !formData.totalCost || !formData.date) return;
     
+    if (duplicateEmpIds.size > 0) {
+      showToast("พบรหัสพนักงานซ้ำในรายการ กรุณาตรวจสอบ", "error");
+      return;
+    }
+
     const validAttendees = [];
     for (let a of formData.attendees) {
       if (a.name.trim() !== '' || a.empId.trim() !== '') {
@@ -493,12 +606,16 @@ export default function App() {
     }
   };
 
-  const deleteRecord = async (id) => {
-    if (!user) return;
+  const confirmDelete = async () => {
+    if (!user || !recordToDelete) return;
     try {
-      await deleteDoc(doc(db, 'training_records', id));
-      showToast("Record deleted.");
-    } catch (error) { console.error("Error deleting record:", error); }
+      await deleteDoc(doc(db, 'training_records', recordToDelete));
+      showToast("Record deleted successfully.");
+      setRecordToDelete(null); 
+    } catch (error) { 
+      console.error("Error deleting record:", error); 
+      showToast("Error deleting record", "error");
+    }
   };
 
   if (isLoading) {
@@ -513,12 +630,122 @@ export default function App() {
   const loadedEmployeesCount = Object.keys(employeeMaster).length;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 font-sans text-slate-800">
+    <div className="min-h-screen bg-slate-50 p-6 font-sans text-slate-800 relative">
       
+      {/* Toast Notification */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 flex items-center px-4 py-3 rounded-lg shadow-lg text-white ${toast.type === 'warning' ? 'bg-amber-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-emerald-500'} transition-opacity duration-300`}>
-          {toast.type === 'warning' ? <AlertCircle size={20} className="mr-2" /> : <CheckCircle size={20} className="mr-2" />}
+          {toast.type === 'warning' ? <AlertCircle size={20} className="mr-2" /> : toast.type === 'error' ? <AlertTriangle size={20} className="mr-2" /> : <CheckCircle size={20} className="mr-2" />}
           <span className="font-medium">{toast.message}</span>
+        </div>
+      )}
+
+      {/* Feature 3: Delete Confirmation Modal */}
+      {recordToDelete && (
+        <div className="fixed inset-0 bg-slate-900/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="bg-red-50 p-4 flex items-center justify-center border-b border-red-100">
+              <div className="bg-red-100 p-3 rounded-full text-red-600">
+                <AlertTriangle size={32} />
+              </div>
+            </div>
+            <div className="p-6 text-center space-y-2">
+              <h3 className="text-xl font-bold text-slate-800">ยืนยันการลบข้อมูล?</h3>
+              <p className="text-sm text-slate-500">ข้อมูลที่ถูกลบจะไม่สามารถกู้คืนได้ คุณแน่ใจหรือไม่ที่จะลบรายการนี้?</p>
+            </div>
+            <div className="p-4 bg-slate-50 flex gap-3 border-t border-slate-100">
+              <button 
+                onClick={() => setRecordToDelete(null)}
+                className="flex-1 px-4 py-2 font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                ยกเลิก (Cancel)
+              </button>
+              <button 
+                onClick={confirmDelete}
+                className="flex-1 px-4 py-2 font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm"
+              >
+                ยืนยันลบ (Delete)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feature 5: Individual Profile Modal */}
+      {selectedEmployee && employeeProfileData && (
+        <div className="fixed inset-0 bg-slate-900/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+            
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white relative flex-shrink-0">
+              <button onClick={() => setSelectedEmployee(null)} className="absolute top-4 right-4 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition-colors">
+                <X size={18} />
+              </button>
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center border-2 border-white/30 backdrop-blur-sm">
+                  <User size={32} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold">{employeeProfileData.name || 'Unknown Name'}</h2>
+                  <p className="text-blue-100 flex items-center gap-2 text-sm mt-1">
+                    <span className="bg-blue-800/50 px-2 py-0.5 rounded font-mono">{employeeProfileData.empId || 'NO-ID'}</span>
+                    <span>{employeeProfileData.department}</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Profile KPIs */}
+            <div className="flex bg-slate-50 border-b border-slate-100 flex-shrink-0">
+              <div className="flex-1 p-4 text-center border-r border-slate-200">
+                <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Learning Hours</p>
+                <p className="text-2xl font-bold text-indigo-600">{employeeProfileData.totalHours} <span className="text-sm font-normal text-slate-500">h</span></p>
+              </div>
+              <div className="flex-1 p-4 text-center border-r border-slate-200">
+                <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Trainings</p>
+                <p className="text-2xl font-bold text-slate-700">{employeeProfileData.totalTrainings}</p>
+              </div>
+              <div className="flex-1 p-4 text-center">
+                <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Engagements</p>
+                <p className="text-2xl font-bold text-pink-600">{employeeProfileData.totalEngagements}</p>
+              </div>
+            </div>
+
+            {/* History List */}
+            <div className="p-0 overflow-y-auto flex-1 bg-slate-50">
+              <div className="p-4 border-b border-slate-100 bg-white sticky top-0 z-10 shadow-sm">
+                <h3 className="font-bold text-slate-700 flex items-center text-sm">
+                  <Activity size={16} className="mr-2 text-blue-500" /> Activity History
+                </h3>
+              </div>
+              <ul className="p-4 space-y-3">
+                {employeeProfileData.history.length === 0 ? (
+                  <p className="text-center text-slate-400 py-8 text-sm">ไม่มีประวัติการเข้าร่วม</p>
+                ) : (
+                  employeeProfileData.history.map((hist, idx) => (
+                    <li key={idx} className="bg-white border border-slate-200 rounded-xl p-3 flex items-start gap-3 hover:shadow-md transition-shadow">
+                      <div className={`p-2 rounded-lg mt-1 flex-shrink-0 ${hist.type === 'Engagement' ? 'bg-pink-50 text-pink-500' : 'bg-blue-50 text-blue-500'}`}>
+                        {hist.type === 'Engagement' ? <PartyPopper size={16} /> : <BookOpen size={16} />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-slate-800 text-sm truncate" title={hist.course}>{hist.course}</p>
+                        <p className="text-xs text-slate-500 flex items-center mt-1">
+                          <Calendar size={12} className="mr-1" /> {hist.date}
+                        </p>
+                      </div>
+                      {hist.type !== 'Engagement' && (
+                        <div className="text-right flex-shrink-0">
+                          <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded text-xs font-bold border border-emerald-100">
+                            +{hist.hours} h
+                          </span>
+                        </div>
+                      )}
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+          </div>
         </div>
       )}
 
@@ -655,7 +882,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Charts Section - 4 column layout */}
+        {/* Charts Section - Row 1 */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-2 flex flex-col">
@@ -716,7 +943,7 @@ export default function App() {
               ) : (
                 <ul className="space-y-4 pr-2">
                   {leaderboard.map((learner, index) => (
-                    <li key={index} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100 hover:border-blue-200 transition-colors">
+                    <li key={index} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100 hover:border-blue-200 hover:shadow-sm transition-all">
                       <div className="flex items-center gap-3 overflow-hidden">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0
                           ${index === 0 ? 'bg-amber-400 shadow-sm shadow-amber-200' : 
@@ -726,9 +953,14 @@ export default function App() {
                           {index + 1}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-bold text-slate-800 truncate" title={learner.name || learner.empId}>
+                          {/* Feature 5: Clickable Name for Profile Modal */}
+                          <button 
+                            onClick={() => setSelectedEmployee(learner)}
+                            className="text-sm font-bold text-slate-800 truncate hover:text-blue-600 text-left block w-full outline-none" 
+                            title="คลิกดูประวัติการอบรม"
+                          >
                             {learner.name || learner.empId || 'Unknown'}
-                          </p>
+                          </button>
                           <p className="text-[10px] text-slate-500 truncate" title={learner.department}>
                             {learner.department}
                           </p>
@@ -744,7 +976,30 @@ export default function App() {
               )}
             </div>
           </div>
+        </div>
 
+        {/* Feature 2: Charts Section - Row 2 (Monthly Trend) */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-4 flex flex-col">
+            <h3 className="text-lg font-bold mb-4 flex items-center text-slate-800">
+              <TrendingUp size={20} className="mr-2 text-blue-500"/> Monthly Trend (Spending & Learning Hours)
+            </h3>
+            <div className="h-[320px] w-full mt-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={monthlyTrendData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 12}} />
+                  <YAxis yAxisId="left" axisLine={false} tickLine={false} tickFormatter={(value) => `฿${value >= 1000 ? (value/1000)+'k' : value}`} width={60} />
+                  <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tickFormatter={(value) => `${value}h`} width={40} />
+                  <RechartsTooltip formatter={(value, name) => [name.includes('Spent') ? `฿${value.toLocaleString()}` : `${value} Hrs`, name]} />
+                  <Legend verticalAlign="top" height={36} />
+                  <Line yAxisId="left" type="monotone" dataKey="trainingSpent" name="Training Spent" stroke="#3b82f6" strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
+                  <Line yAxisId="left" type="monotone" dataKey="engagementSpent" name="Engagement Spent" stroke="#ec4899" strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
+                  <Line yAxisId="right" type="monotone" dataKey="hours" name="Total Learning Hours" stroke="#f59e0b" strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
 
         {/* Data Input & Table Section */}
@@ -813,53 +1068,65 @@ export default function App() {
                   ))}
                 </datalist>
 
-                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                  {formData.attendees.map((attendee, index) => (
-                    <div key={index} className="flex flex-col gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg relative group">
-                      {formData.attendees.length > 1 && (
-                        <button type="button" onClick={() => removeAttendee(index)} className="absolute -top-2 -right-2 bg-white rounded-full p-1 text-slate-400 hover:text-red-500 shadow-sm border border-slate-200 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <X size={14} />
-                        </button>
-                      )}
-                      
-                      <div className="flex gap-2">
-                        <input 
-                          type="text" 
-                          placeholder="Emp ID" 
-                          value={attendee.empId} 
-                          onChange={(e) => handleAttendeeChange(index, 'empId', e.target.value)} 
-                          className="w-1/3 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white placeholder:text-blue-300" 
-                        />
-                        <input 
-                          type="text" 
-                          placeholder="Name - Surname" 
-                          list="employee-names-list"
-                          value={attendee.name} 
-                          onChange={(e) => handleAttendeeChange(index, 'name', e.target.value)} 
-                          className="w-2/3 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" 
-                        />
+                <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                  {formData.attendees.map((attendee, index) => {
+                    const empIdVal = attendee.empId.trim();
+                    const isDuplicate = empIdVal !== '' && duplicateEmpIds.has(empIdVal);
+
+                    return (
+                      <div key={index} className={`flex flex-col gap-2 p-3 bg-slate-50 border rounded-lg relative group transition-colors ${isDuplicate ? 'border-red-400 bg-red-50/30' : 'border-slate-200'}`}>
+                        {formData.attendees.length > 1 && (
+                          <button type="button" onClick={() => removeAttendee(index)} className="absolute -top-2 -right-2 bg-white rounded-full p-1 text-slate-400 hover:text-red-500 shadow-sm border border-slate-200 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <X size={14} />
+                          </button>
+                        )}
+                        
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            placeholder="Emp ID" 
+                            value={attendee.empId} 
+                            onChange={(e) => handleAttendeeChange(index, 'empId', e.target.value)} 
+                            className={`w-1/3 px-2 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 bg-white ${isDuplicate ? 'border-red-400 focus:ring-red-500' : 'border-slate-300 focus:ring-blue-500 placeholder:text-blue-300'}`} 
+                          />
+                          <input 
+                            type="text" 
+                            placeholder="Name - Surname" 
+                            list="employee-names-list"
+                            value={attendee.name} 
+                            onChange={(e) => handleAttendeeChange(index, 'name', e.target.value)} 
+                            className="w-2/3 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" 
+                          />
+                        </div>
+
+                        {isDuplicate && (
+                          <p className="text-[10px] text-red-500 flex items-center mt-[-4px]">
+                            <AlertCircle size={10} className="mr-1" /> รหัสพนักงานซ้ำ
+                          </p>
+                        )}
+
+                        <select 
+                          value={attendee.department} 
+                          onChange={(e) => handleAttendeeChange(index, 'department', e.target.value)} 
+                          className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        >
+                          {availableDepartments.map(d => <option key={d} value={d}>{d}</option>)}
+                          <option value="Other" className="font-semibold text-blue-600">+ เพิ่มแผนกใหม่ (Other)</option>
+                        </select>
+                        
+                        {attendee.department === 'Other' && (
+                          <input 
+                            type="text" 
+                            placeholder="พิมพ์ชื่อแผนกใหม่ที่นี่..." 
+                            required
+                            value={attendee.customDepartment} 
+                            onChange={(e) => handleAttendeeChange(index, 'customDepartment', e.target.value)} 
+                            className="w-full px-2 py-1.5 text-sm border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" 
+                          />
+                        )}
                       </div>
-                      <select 
-                        value={attendee.department} 
-                        onChange={(e) => handleAttendeeChange(index, 'department', e.target.value)} 
-                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                      >
-                        {availableDepartments.map(d => <option key={d} value={d}>{d}</option>)}
-                        <option value="Other" className="font-semibold text-blue-600">+ เพิ่มแผนกใหม่ (Other)</option>
-                      </select>
-                      
-                      {attendee.department === 'Other' && (
-                        <input 
-                          type="text" 
-                          placeholder="พิมพ์ชื่อแผนกใหม่ที่นี่..." 
-                          required
-                          value={attendee.customDepartment} 
-                          onChange={(e) => handleAttendeeChange(index, 'customDepartment', e.target.value)} 
-                          className="w-full px-2 py-1.5 text-sm border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" 
-                        />
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -876,41 +1143,61 @@ export default function App() {
             </form>
           </div>
 
-          {/* Data Table with Expandable Rows */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm xl:col-span-3 overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-slate-100 flex flex-wrap gap-4 justify-between items-center">
-              <div className="flex items-center gap-3">
-                <h3 className="text-lg font-bold">Raw Data Log</h3>
-              </div>
+          {/* Data Table with Expandable Rows, Search & Pagination */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm xl:col-span-3 overflow-hidden flex flex-col h-fit">
+            
+            {/* Table Header & Controls */}
+            <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+              <h3 className="text-lg font-bold">Raw Data Log</h3>
               
-              <div className="flex items-center gap-2">
-                <input 
-                  type="file" 
-                  accept=".csv" 
-                  id="csv-upload" 
-                  ref={fileInputRef}
-                  className="hidden" 
-                  onChange={handleFileUpload} 
-                />
-                <label 
-                  htmlFor="csv-upload"
-                  className="flex items-center space-x-2 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-emerald-200"
-                  title="Upload Employee Master List (CSV)"
-                >
-                  <UploadCloud size={16} />
-                  <span>Import Emp. DB</span>
-                </label>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-64">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input 
+                    type="text" 
+                    placeholder="ค้นหาคอร์ส, ประเภท..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {searchTerm && (
+                    <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
 
-                <button 
-                  onClick={exportToCSV}
-                  className="flex items-center space-x-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors border border-blue-200"
-                >
-                  <Download size={16} />
-                  <span>Export CSV</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="file" 
+                    accept=".csv" 
+                    id="csv-upload" 
+                    ref={fileInputRef}
+                    className="hidden" 
+                    onChange={handleFileUpload} 
+                  />
+                  <label 
+                    htmlFor="csv-upload"
+                    className="flex items-center justify-center space-x-2 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-emerald-200"
+                    title="Upload Employee Master List (CSV)"
+                  >
+                    <UploadCloud size={16} />
+                    <span className="hidden sm:inline">Import DB</span>
+                  </label>
+
+                  <button 
+                    onClick={exportToCSV}
+                    className="flex items-center justify-center space-x-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors border border-blue-200"
+                  >
+                    <Download size={16} />
+                    <span className="hidden sm:inline">Export CSV</span>
+                  </button>
+                </div>
               </div>
             </div>
-            <div className="overflow-x-auto flex-1 p-0">
+
+            {/* Table Content */}
+            <div className="overflow-x-auto p-0">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 text-sm uppercase tracking-wider">
@@ -923,12 +1210,14 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
-                  {filteredRecords.length === 0 ? (
+                  {paginatedRecords.length === 0 ? (
                     <tr>
-                      <td colSpan="6" className="p-8 text-center text-slate-400">No records found. Add your first training log above!</td>
+                      <td colSpan="6" className="p-8 text-center text-slate-400">
+                        {searchTerm ? "ไม่พบข้อมูลที่ค้นหา" : "No records found. Add your first training log above!"}
+                      </td>
                     </tr>
                   ) : (
-                    filteredRecords.map((record) => {
+                    paginatedRecords.map((record) => {
                       let seats = 0;
                       if (record.attendees) seats = record.attendees.length;
                       else if (record.allocations) seats = record.allocations.reduce((sum, a) => sum + Number(a.participants), 0);
@@ -987,7 +1276,8 @@ export default function App() {
                               <button onClick={() => handleEditClick(record)} className="p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors" title="Edit">
                                 <Edit2 size={16} />
                               </button>
-                              <button onClick={() => deleteRecord(record.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                              
+                              <button onClick={() => setRecordToDelete(record.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
                                 <Trash2 size={16} />
                               </button>
                             </td>
@@ -1003,12 +1293,17 @@ export default function App() {
                                   {record.attendees && record.attendees.length > 0 ? (
                                     <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                                       {record.attendees.map((a, idx) => (
-                                        <li key={idx} className="flex items-start p-2 bg-slate-50 border border-slate-100 rounded-md">
+                                        <li key={idx} className="flex items-start p-2 bg-slate-50 border border-slate-100 rounded-md hover:bg-white transition-colors group">
                                           <UserCheck size={14} className={`mt-0.5 mr-2 flex-shrink-0 ${isEngagement ? 'text-pink-500' : 'text-emerald-500'}`} />
                                           <div className="min-w-0">
-                                            <p className="text-sm font-medium text-slate-800 truncate" title={a.name || a.empId}>
+                                            {/* Feature 5: Clickable Name inside expanded row */}
+                                            <button 
+                                              onClick={() => setSelectedEmployee(a)}
+                                              className="text-sm font-medium text-slate-800 truncate text-left outline-none group-hover:text-blue-600 transition-colors" 
+                                              title="คลิกดูประวัติการอบรม"
+                                            >
                                               {a.empId ? `[${a.empId}] ` : ''}{a.name || 'Unknown Name'}
-                                            </p>
+                                            </button>
                                             <p className="text-[10px] text-slate-500 truncate mt-0.5" title={a.department}>{a.department}</p>
                                           </div>
                                         </li>
@@ -1039,6 +1334,38 @@ export default function App() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls */}
+            {searchedRecords.length > 0 && (
+              <div className="p-4 border-t border-slate-100 flex items-center justify-between text-sm bg-white">
+                <span className="text-slate-500">
+                  Showing <span className="font-medium text-slate-800">{((currentPage - 1) * rowsPerPage) + 1}</span> to <span className="font-medium text-slate-800">{Math.min(currentPage * rowsPerPage, searchedRecords.length)}</span> of <span className="font-medium text-slate-800">{searchedRecords.length}</span> entries
+                </span>
+                
+                <div className="flex items-center gap-1">
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
+                    title="Previous Page"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="px-3 py-1.5 text-slate-600 font-medium">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
+                    title="Next Page"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+            
           </div>
           
         </div>
