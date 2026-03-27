@@ -153,8 +153,9 @@ export default function App() {
     });
 
     filteredRecords.forEach(record => {
+      const isEngagement = record.type === 'Engagement';
       const recordCost = Number(record.totalCost || record.cost || 0);
-      const duration = Number(record.durationHours || 0);
+      const duration = isEngagement ? 0 : Number(record.durationHours || 0);
       
       let attendeesList = [];
 
@@ -175,15 +176,14 @@ export default function App() {
       const recordTotalParticipants = attendeesList.length;
       totalSpent += recordCost;
       
-      // แยกงบค่าใช้จ่ายตามประเภทกิจกรรม
-      if (record.type === 'Engagement') {
+      // แยกงบค่าใช้จ่ายตามประเภทกิจกรรม และนับ Seat เฉพาะ Training
+      if (isEngagement) {
         engagementSpent += recordCost;
       } else {
         trainingSpent += recordCost;
+        totalParticipants += recordTotalParticipants;
+        totalLearningHours += (duration * recordTotalParticipants);
       }
-
-      totalParticipants += recordTotalParticipants;
-      totalLearningHours += (duration * recordTotalParticipants);
 
       const costPerPerson = recordTotalParticipants > 0 ? (recordCost / recordTotalParticipants) : 0;
 
@@ -191,19 +191,24 @@ export default function App() {
         const dept = person.department || 'Unknown';
         if (!deptStats[dept]) deptStats[dept] = { name: dept, spent: 0, participants: 0, hours: 0 };
         
+        // ค่าใช้จ่ายยังคงถูกปันส่วนเข้าแต่ละแผนกไม่ว่าจะเป็น Train หรือ Engage
         deptStats[dept].spent += costPerPerson;
-        deptStats[dept].participants += 1;
-        deptStats[dept].hours += duration;
-
-        if (!person.isLegacy && (person.empId || person.name)) {
-          const uniqueKey = `${person.empId?.trim() || ''}-${person.name?.trim() || ''}`.toLowerCase();
-          if (uniqueKey !== '-') uniqueAttendees.add(uniqueKey);
+        
+        // นับคนและชั่วโมงเฉพาะกิจกรรม Training
+        if (!isEngagement) {
+          deptStats[dept].participants += 1;
+          deptStats[dept].hours += duration;
+          
+          if (!person.isLegacy && (person.empId || person.name)) {
+            const uniqueKey = `${person.empId?.trim() || ''}-${person.name?.trim() || ''}`.toLowerCase();
+            if (uniqueKey !== '-') uniqueAttendees.add(uniqueKey);
+          }
         }
       });
     });
 
     const chartData = Object.values(deptStats).filter(d => d.participants > 0 || d.spent > 0);
-    const pieData = chartData.filter(d => d.participants > 0);
+    const pieData = chartData.filter(d => d.hours > 0); // โชว์เฉพาะแผนกที่มีชั่วโมงเรียน
 
     return { totalSpent, trainingSpent, engagementSpent, totalParticipants, totalLearningHours, uniqueHeads: uniqueAttendees.size, chartData, pieData };
   }, [filteredRecords, availableDepartments]);
@@ -213,6 +218,8 @@ export default function App() {
     const employeeStats = {};
     
     filteredRecords.forEach(record => {
+      if (record.type === 'Engagement') return; // ข้ามกิจกรรม Engagement ไม่เอามาคิด Leaderboard
+
       const duration = Number(record.durationHours || 0);
       if (record.attendees) {
         record.attendees.forEach(person => {
@@ -377,10 +384,11 @@ export default function App() {
   };
 
   const exportToCSV = () => {
-    const headers = ['Date', 'Course', 'Duration (Hrs)', 'Total Seats', 'Total Cost (THB)', 'Attendee Details (ID/Name/Dept)'];
+    const headers = ['Date', 'Type', 'Activity/Course', 'Duration (Hrs)', 'Total Seats', 'Total Cost (THB)', 'Attendee Details (ID/Name/Dept)'];
     const rows = filteredRecords.map(r => {
+      const type = r.type || 'Training';
       const cost = r.totalCost || r.cost || 0;
-      const duration = r.durationHours || 0;
+      const duration = type === 'Engagement' ? 0 : (r.durationHours || 0);
       let seats = 0;
       let details = "Legacy Format";
 
@@ -392,14 +400,14 @@ export default function App() {
         details = r.allocations.map(a => `${a.department} (${a.participants} pax)`).join(" | ");
       }
 
-      return [r.date, `"${r.course}"`, duration, seats, cost, `"${details}"`];
+      return [r.date, type, `"${r.course}"`, duration, seats, cost, `"${details}"`];
     });
     
     const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `training_report_${filterYear}.csv`);
+    link.setAttribute("download", `budget_report_${filterYear}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -466,7 +474,7 @@ export default function App() {
       course: formData.course,
       date: formData.date,
       totalCost: Number(formData.totalCost),
-      durationHours: Number(formData.durationHours || 0),
+      durationHours: formData.type === 'Engagement' ? 0 : Number(formData.durationHours || 0),
       attendees: validAttendees
     };
     
@@ -591,7 +599,7 @@ export default function App() {
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
             <div className="p-2 bg-amber-100 text-amber-600 rounded-lg"><Users size={20} /></div>
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase">Total Seats Filled</p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase">Training Seats</p>
               <h3 className="text-lg font-bold text-slate-800">{metrics.totalParticipants}</h3>
             </div>
           </div>
@@ -617,9 +625,9 @@ export default function App() {
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
             <div className="p-2 bg-purple-100 text-purple-600 rounded-lg"><BookOpen size={20} /></div>
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase">Cost/Seat</p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase">Cost/Seat (Train)</p>
               <h3 className="text-lg font-bold text-slate-800">
-                ฿{metrics.totalParticipants ? Math.round(metrics.totalSpent / metrics.totalParticipants).toLocaleString() : 0}
+                ฿{metrics.totalParticipants ? Math.round(metrics.trainingSpent / metrics.totalParticipants).toLocaleString() : 0}
               </h3>
             </div>
           </div>
@@ -750,12 +758,16 @@ export default function App() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Duration (Hrs)</label>
-                  <input required type="number" min="0.5" step="0.5" name="durationHours" value={formData.durationHours} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. 2.5" />
+                  {formData.type === 'Engagement' ? (
+                    <input disabled type="text" value="N/A" className="w-full px-3 py-2 border border-slate-200 bg-slate-100 text-slate-400 rounded-lg cursor-not-allowed font-medium text-center" title="Engagement activities do not add to learning hours" />
+                  ) : (
+                    <input required type="number" min="0.5" step="0.5" name="durationHours" value={formData.durationHours} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. 2.5" />
+                  )}
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Total Course Cost (฿)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Total Cost (฿)</label>
                 <input required type="number" min="0" name="totalCost" value={formData.totalCost} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0" />
               </div>
 
@@ -881,7 +893,7 @@ export default function App() {
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 text-sm uppercase tracking-wider">
                     <th className="p-4 font-medium">Date</th>
-                    <th className="p-4 font-medium">Course</th>
+                    <th className="p-4 font-medium">Course / Activity</th>
                     <th className="p-4 font-medium">Seats Filled</th>
                     <th className="p-4 font-medium text-right">Hours</th>
                     <th className="p-4 font-medium text-right">Cost (฿)</th>
@@ -902,6 +914,7 @@ export default function App() {
                       const cost = record.totalCost || record.cost || 0;
                       const duration = record.durationHours || 0;
                       const isExpanded = expandedRows.has(record.id);
+                      const isEngagement = record.type === 'Engagement';
 
                       return (
                         <React.Fragment key={record.id}>
@@ -917,7 +930,7 @@ export default function App() {
                             </td>
                             <td className="p-4 font-medium text-slate-800">
                               <div className="flex items-center gap-2">
-                                {record.type === 'Engagement' ? (
+                                {isEngagement ? (
                                   <span className="px-1.5 py-0.5 bg-pink-100 text-pink-600 rounded text-[10px] font-bold uppercase tracking-wider flex items-center" title="Engagement Activity">
                                     <PartyPopper size={10} className="mr-1" /> ENGAGE
                                   </span>
@@ -938,8 +951,14 @@ export default function App() {
                                 {seats} Persons
                               </span>
                             </td>
-                            <td className="p-4 text-right whitespace-nowrap text-slate-600">
-                              {duration}h <span className="opacity-50 text-xs">x {seats}</span>
+                            <td className="p-4 text-right whitespace-nowrap text-slate-600 font-medium">
+                              {isEngagement ? (
+                                <span className="text-slate-400">-</span>
+                              ) : (
+                                <>
+                                  {duration}h <span className="opacity-50 text-xs font-normal">x {seats}</span>
+                                </>
+                              )}
                             </td>
                             <td className="p-4 text-right text-slate-600">฿{cost.toLocaleString()}</td>
                             <td className="p-4 flex justify-center space-x-1">
@@ -963,7 +982,7 @@ export default function App() {
                                     <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                                       {record.attendees.map((a, idx) => (
                                         <li key={idx} className="flex items-start p-2 bg-slate-50 border border-slate-100 rounded-md">
-                                          <UserCheck size={14} className="mt-0.5 mr-2 text-emerald-500 flex-shrink-0" />
+                                          <UserCheck size={14} className={`mt-0.5 mr-2 flex-shrink-0 ${isEngagement ? 'text-pink-500' : 'text-emerald-500'}`} />
                                           <div className="min-w-0">
                                             <p className="text-sm font-medium text-slate-800 truncate" title={a.name || a.empId}>
                                               {a.empId ? `[${a.empId}] ` : ''}{a.name || 'Unknown Name'}
