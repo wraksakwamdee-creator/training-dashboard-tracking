@@ -1,54 +1,12 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip as RechartsTooltip,
-  Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
-import {
-  DollarSign,
-  Users,
-  BookOpen,
-  TrendingUp,
-  Trash2,
-  PlusCircle,
-  Loader2,
-  Download,
-  Edit2,
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  X,
-  UserCheck,
-  UploadCloud,
-  Database,
-  Target,
-  Trophy,
-  ChevronDown,
-  ChevronRight,
-} from "lucide-react";
-import { initializeApp } from "firebase/app";
-import {
-  getAuth,
-  signInWithCustomToken,
-  signInAnonymously,
-  onAuthStateChanged,
-} from "firebase/auth";
-import {
-  getFirestore,
-  collection,
-  onSnapshot,
-  doc,
-  setDoc,
-  deleteDoc,
-} from "firebase/firestore";
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, 
+  PieChart, Pie, Cell 
+} from 'recharts';
+import { DollarSign, Users, BookOpen, TrendingUp, Trash2, PlusCircle, Loader2, Download, Edit2, AlertCircle, CheckCircle, Clock, X, UserCheck, UploadCloud, Database, Target, Trophy, ChevronDown, ChevronRight, PartyPopper } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 // Initialize Firebase OUTSIDE component
 const firebaseConfig = {
@@ -57,7 +15,7 @@ const firebaseConfig = {
   projectId: "training-dashboard-d984f",
   storageBucket: "training-dashboard-d984f.firebasestorage.app",
   messagingSenderId: "841547478662",
-  appId: "1:841547478662:web:575aa37097b17fecda4307",
+  appId: "1:841547478662:web:575aa37097b17fecda4307"
 };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -65,46 +23,22 @@ const db = getFirestore(app);
 
 // Base departments
 const BASE_DEPARTMENTS = [
-  "Underwriting",
-  "Claims",
-  "Actuarial",
-  "Agency Sales",
-  "Direct Sales",
-  "Customer Service",
-  "Legal & Compliance",
-  "IT & Technology",
-  "HR & Training",
-  "Finance & Accounting",
-  "Operations",
-  "Marketing",
-  "Risk Management",
-  "Internal Audit",
-  "Investment",
-  "Business Development",
+  'Underwriting', 'Claims', 'Actuarial', 'Agency Sales', 'Direct Sales', 
+  'Customer Service', 'Legal & Compliance', 'IT & Technology', 
+  'HR & Training', 'Finance & Accounting', 'Operations', 'Marketing',
+  'Risk Management', 'Internal Audit', 'Investment', 'Business Development'
 ];
 
 const COLORS = [
-  "#3b82f6",
-  "#10b981",
-  "#f59e0b",
-  "#ef4444",
-  "#8b5cf6",
-  "#ec4899",
-  "#14b8a6",
-  "#f97316",
-  "#64748b",
-  "#0ea5e9",
-  "#84cc16",
-  "#eab308",
-  "#d946ef",
-  "#f43f5e",
-  "#06b6d4",
+  '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', 
+  '#ec4899', '#14b8a6', '#f97316', '#64748b', '#0ea5e9',
+  '#84cc16', '#eab308', '#d946ef', '#f43f5e', '#06b6d4'
 ];
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-
+  
   // Data States
   const [records, setRecords] = useState([]);
   const [annualBudget, setAnnualBudget] = useState(1000000);
@@ -112,30 +46,26 @@ export default function App() {
 
   // UI States
   const [editingId, setEditingId] = useState(null);
-  const [filterYear, setFilterYear] = useState("All");
+  const [filterYear, setFilterYear] = useState('All');
   const [toast, setToast] = useState(null);
   const [expandedRows, setExpandedRows] = useState(new Set());
   const fileInputRef = useRef(null);
 
   // Form State
   const [formData, setFormData] = useState({
-    course: "",
-    date: "",
-    totalCost: "",
-    durationHours: "",
-    attendees: [
-      { empId: "", name: "", department: "Underwriting", customDepartment: "" },
-    ],
+    type: 'Training',
+    course: '',
+    date: '',
+    totalCost: '',
+    durationHours: '',
+    attendees: [{ empId: '', name: '', department: 'Underwriting', customDepartment: '' }]
   });
 
   // 1. Authentication Effect
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (
-          typeof __initial_auth_token !== "undefined" &&
-          __initial_auth_token
-        ) {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           try {
             await signInWithCustomToken(auth, __initial_auth_token);
           } catch (tokenError) {
@@ -155,177 +85,148 @@ export default function App() {
 
   // 2. Data Fetching Effect
   useEffect(() => {
-    if (!user) return;
+    if (!user) return; 
 
     // Fetch Records
-    const recordsRef = collection(db, "training_records");
-    const unsubRecords = onSnapshot(
-      recordsRef,
-      (snapshot) => {
-        const data = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        data.sort((a, b) => new Date(b.date) - new Date(a.date));
-        setRecords(data);
-        setIsLoading(false);
-      },
-      (error) => {
-        console.error("Error fetching records:", error);
-        setIsLoading(false);
-      }
-    );
+    const recordsRef = collection(db, 'training_records');
+    const unsubRecords = onSnapshot(recordsRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      data.sort((a, b) => new Date(b.date) - new Date(a.date));
+      setRecords(data);
+      setIsLoading(false);
+    }, (error) => {
+      console.error("Error fetching records:", error);
+      setIsLoading(false);
+    });
 
     // Fetch Budget
-    const unsubSettings = onSnapshot(
-      doc(db, "settings", "budget"),
-      (docSnap) => {
-        if (docSnap.exists() && docSnap.data().annualBudget !== undefined) {
-          setAnnualBudget(docSnap.data().annualBudget);
-        }
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'budget'), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().annualBudget !== undefined) {
+        setAnnualBudget(docSnap.data().annualBudget);
       }
-    );
+    });
 
     // Fetch Employee Master Data
-    const unsubEmp = onSnapshot(
-      doc(db, "settings", "employee_master"),
-      (docSnap) => {
-        if (docSnap.exists() && docSnap.data().data) {
-          setEmployeeMaster(docSnap.data().data);
-        }
+    const unsubEmp = onSnapshot(doc(db, 'settings', 'employee_master'), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().data) {
+        setEmployeeMaster(docSnap.data().data);
       }
-    );
+    });
 
-    return () => {
-      unsubRecords();
-      unsubSettings();
-      unsubEmp();
-    };
+    return () => { unsubRecords(); unsubSettings(); unsubEmp(); };
   }, [user]);
 
   // Dynamic Departments
   const availableDepartments = useMemo(() => {
-    const usedDepts = records
-      .flatMap((r) => {
-        if (r.attendees) return r.attendees.map((a) => a.department);
-        if (r.allocations) return r.allocations.map((a) => a.department);
-        return [r.department];
-      })
-      .filter(Boolean);
-    const uniqueDepts = Array.from(
-      new Set([...BASE_DEPARTMENTS, ...usedDepts])
-    );
+    const usedDepts = records.flatMap(r => {
+      if (r.attendees) return r.attendees.map(a => a.department);
+      if (r.allocations) return r.allocations.map(a => a.department);
+      return [r.department];
+    }).filter(Boolean);
+    const uniqueDepts = Array.from(new Set([...BASE_DEPARTMENTS, ...usedDepts]));
     return uniqueDepts.sort();
   }, [records]);
 
   // Derived Data
   const availableYears = useMemo(() => {
-    const years = records.map((r) => r.date?.substring(0, 4)).filter(Boolean);
-    return ["All", ...Array.from(new Set(years)).sort().reverse()];
+    const years = records.map(r => r.date?.substring(0, 4)).filter(Boolean);
+    return ['All', ...Array.from(new Set(years)).sort().reverse()];
   }, [records]);
 
   const filteredRecords = useMemo(() => {
-    if (filterYear === "All") return records;
-    return records.filter((r) => r.date?.startsWith(filterYear));
+    if (filterYear === 'All') return records;
+    return records.filter(r => r.date?.startsWith(filterYear));
   }, [records, filterYear]);
 
   // Core Metrics Calculation
   const metrics = useMemo(() => {
     let totalSpent = 0;
+    let trainingSpent = 0;
+    let engagementSpent = 0;
     let totalParticipants = 0;
     let totalLearningHours = 0;
     const deptStats = {};
     const uniqueAttendees = new Set();
 
-    availableDepartments.forEach((d) => {
+    availableDepartments.forEach(d => {
       deptStats[d] = { name: d, spent: 0, participants: 0, hours: 0 };
     });
 
-    filteredRecords.forEach((record) => {
+    filteredRecords.forEach(record => {
       const recordCost = Number(record.totalCost || record.cost || 0);
       const duration = Number(record.durationHours || 0);
-
+      
       let attendeesList = [];
 
       if (record.attendees && record.attendees.length > 0) {
         attendeesList = record.attendees;
       } else if (record.allocations) {
-        record.allocations.forEach((alloc) => {
-          for (let i = 0; i < Number(alloc.participants || 0); i++) {
-            attendeesList.push({
-              department: alloc.department,
-              isLegacy: true,
-            });
+        record.allocations.forEach(alloc => {
+          for(let i=0; i<Number(alloc.participants || 0); i++) {
+            attendeesList.push({ department: alloc.department, isLegacy: true });
           }
         });
       } else if (record.department) {
-        for (let i = 0; i < Number(record.participants || 0); i++) {
+        for(let i=0; i<Number(record.participants || 0); i++) {
           attendeesList.push({ department: record.department, isLegacy: true });
         }
       }
 
       const recordTotalParticipants = attendeesList.length;
       totalSpent += recordCost;
+      
+      // แยกงบค่าใช้จ่ายตามประเภทกิจกรรม
+      if (record.type === 'Engagement') {
+        engagementSpent += recordCost;
+      } else {
+        trainingSpent += recordCost;
+      }
+
       totalParticipants += recordTotalParticipants;
-      totalLearningHours += duration * recordTotalParticipants;
+      totalLearningHours += (duration * recordTotalParticipants);
 
-      const costPerPerson =
-        recordTotalParticipants > 0 ? recordCost / recordTotalParticipants : 0;
+      const costPerPerson = recordTotalParticipants > 0 ? (recordCost / recordTotalParticipants) : 0;
 
-      attendeesList.forEach((person) => {
-        const dept = person.department || "Unknown";
-        if (!deptStats[dept])
-          deptStats[dept] = { name: dept, spent: 0, participants: 0, hours: 0 };
-
+      attendeesList.forEach(person => {
+        const dept = person.department || 'Unknown';
+        if (!deptStats[dept]) deptStats[dept] = { name: dept, spent: 0, participants: 0, hours: 0 };
+        
         deptStats[dept].spent += costPerPerson;
         deptStats[dept].participants += 1;
         deptStats[dept].hours += duration;
 
         if (!person.isLegacy && (person.empId || person.name)) {
-          const uniqueKey = `${person.empId?.trim() || ""}-${
-            person.name?.trim() || ""
-          }`.toLowerCase();
-          if (uniqueKey !== "-") uniqueAttendees.add(uniqueKey);
+          const uniqueKey = `${person.empId?.trim() || ''}-${person.name?.trim() || ''}`.toLowerCase();
+          if (uniqueKey !== '-') uniqueAttendees.add(uniqueKey);
         }
       });
     });
 
-    const chartData = Object.values(deptStats).filter(
-      (d) => d.participants > 0 || d.spent > 0
-    );
-    const pieData = chartData.filter((d) => d.participants > 0);
+    const chartData = Object.values(deptStats).filter(d => d.participants > 0 || d.spent > 0);
+    const pieData = chartData.filter(d => d.participants > 0);
 
-    return {
-      totalSpent,
-      totalParticipants,
-      totalLearningHours,
-      uniqueHeads: uniqueAttendees.size,
-      chartData,
-      pieData,
-    };
+    return { totalSpent, trainingSpent, engagementSpent, totalParticipants, totalLearningHours, uniqueHeads: uniqueAttendees.size, chartData, pieData };
   }, [filteredRecords, availableDepartments]);
 
   // --- LEADERBOARD CALCULATION ---
   const leaderboard = useMemo(() => {
     const employeeStats = {};
-
-    filteredRecords.forEach((record) => {
+    
+    filteredRecords.forEach(record => {
       const duration = Number(record.durationHours || 0);
       if (record.attendees) {
-        record.attendees.forEach((person) => {
+        record.attendees.forEach(person => {
           if (!person.isLegacy && (person.empId || person.name)) {
             // สร้าง Key ด้วย ID หรือ ชื่อ เพื่อระบุตัวตน
-            const uniqueKey = `${person.empId?.trim() || ""}|${
-              person.name?.trim() || ""
-            }`;
-            if (uniqueKey !== "|") {
+            const uniqueKey = `${person.empId?.trim() || ''}|${person.name?.trim() || ''}`;
+            if (uniqueKey !== '|') {
               if (!employeeStats[uniqueKey]) {
                 employeeStats[uniqueKey] = {
                   empId: person.empId,
                   name: person.name,
                   department: person.department,
                   totalHours: 0,
-                  courses: 0,
+                  courses: 0
                 };
               }
               employeeStats[uniqueKey].totalHours += duration;
@@ -342,10 +243,11 @@ export default function App() {
       .slice(0, 5);
   }, [filteredRecords]);
 
+
   // --- Handlers ---
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleAttendeeChange = (index, field, value) => {
@@ -353,19 +255,19 @@ export default function App() {
     newAttendees[index][field] = value;
 
     // --- AUTO-FILL LOGIC ---
-    if (field === "empId" && value.trim() !== "") {
+    if (field === 'empId' && value.trim() !== '') {
       const empData = employeeMaster[value.trim()];
       if (empData) {
-        newAttendees[index].name = empData.name || "";
+        newAttendees[index].name = empData.name || '';
         if (availableDepartments.includes(empData.department)) {
           newAttendees[index].department = empData.department;
-          newAttendees[index].customDepartment = "";
+          newAttendees[index].customDepartment = '';
         } else {
-          newAttendees[index].department = "Other";
-          newAttendees[index].customDepartment = empData.department || "";
+          newAttendees[index].department = 'Other';
+          newAttendees[index].customDepartment = empData.department || '';
         }
       }
-    } else if (field === "name" && value.trim() !== "") {
+    } else if (field === 'name' && value.trim() !== '') {
       const matchedEntry = Object.entries(employeeMaster).find(
         ([id, data]) => data.name === value.trim()
       );
@@ -374,35 +276,47 @@ export default function App() {
         newAttendees[index].empId = empId;
         if (availableDepartments.includes(empData.department)) {
           newAttendees[index].department = empData.department;
-          newAttendees[index].customDepartment = "";
+          newAttendees[index].customDepartment = '';
         } else {
-          newAttendees[index].department = "Other";
-          newAttendees[index].customDepartment = empData.department || "";
+          newAttendees[index].department = 'Other';
+          newAttendees[index].customDepartment = empData.department || '';
         }
       }
     }
     // -----------------------
 
-    setFormData((prev) => ({ ...prev, attendees: newAttendees }));
+    setFormData(prev => ({ ...prev, attendees: newAttendees }));
   };
 
   const addAttendee = () => {
-    const lastDept =
-      formData.attendees.length > 0
-        ? formData.attendees[formData.attendees.length - 1].department
-        : availableDepartments[0] || "Underwriting";
-    setFormData((prev) => ({
-      ...prev,
-      attendees: [
-        ...prev.attendees,
-        { empId: "", name: "", department: lastDept, customDepartment: "" },
-      ],
+    const lastDept = formData.attendees.length > 0 
+      ? formData.attendees[formData.attendees.length - 1].department 
+      : availableDepartments[0] || 'Underwriting';
+    setFormData(prev => ({
+      ...prev, attendees: [...prev.attendees, { empId: '', name: '', department: lastDept, customDepartment: '' }]
     }));
   };
 
   const removeAttendee = (index) => {
     const newAttendees = formData.attendees.filter((_, i) => i !== index);
-    setFormData((prev) => ({ ...prev, attendees: newAttendees }));
+    setFormData(prev => ({ ...prev, attendees: newAttendees }));
+  };
+
+  const handleAddAllStaff = () => {
+    if (Object.keys(employeeMaster).length === 0) {
+      showToast("กรุณา Import ฐานข้อมูลพนักงานก่อนครับ", "warning");
+      return;
+    }
+    
+    const allStaff = Object.keys(employeeMaster).map(id => ({
+      empId: id,
+      name: employeeMaster[id].name,
+      department: availableDepartments.includes(employeeMaster[id].department) ? employeeMaster[id].department : 'Other',
+      customDepartment: availableDepartments.includes(employeeMaster[id].department) ? '' : employeeMaster[id].department
+    }));
+
+    setFormData(prev => ({ ...prev, attendees: allStaff }));
+    showToast(`เพิ่มพนักงานทั้งหมด ${allStaff.length} คน เรียบร้อย!`);
   };
 
   const handleBudgetChange = (e) => setAnnualBudget(Number(e.target.value));
@@ -410,18 +324,12 @@ export default function App() {
   const saveBudgetToCloud = async (newBudget) => {
     if (!user) return;
     try {
-      await setDoc(
-        doc(db, "settings", "budget"),
-        { annualBudget: newBudget },
-        { merge: true }
-      );
+      await setDoc(doc(db, 'settings', 'budget'), { annualBudget: newBudget }, { merge: true });
       showToast("Budget updated successfully!");
-    } catch (error) {
-      console.error("Error saving budget", error);
-    }
+    } catch (error) { console.error("Error saving budget", error); }
   };
 
-  const showToast = (message, type = "success") => {
+  const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000); // 3 seconds
   };
@@ -449,7 +357,7 @@ export default function App() {
 
         rows.forEach((row, i) => {
           if (i === 0 || !row.trim()) return;
-          const cols = row.split(",");
+          const cols = row.split(',');
           if (cols.length >= 3) {
             const id = cols[0].trim();
             empData[id] = { name: cols[1].trim(), department: cols[2].trim() };
@@ -457,9 +365,9 @@ export default function App() {
           }
         });
 
-        await setDoc(doc(db, "settings", "employee_master"), { data: empData });
+        await setDoc(doc(db, 'settings', 'employee_master'), { data: empData });
         showToast(`นำเข้าฐานข้อมูลพนักงานสำเร็จแล้ว ${count} คน!`);
-        if (fileInputRef.current) fileInputRef.current.value = "";
+        if (fileInputRef.current) fileInputRef.current.value = ''; 
       } catch (err) {
         console.error("Error parsing CSV:", err);
         showToast("รูปแบบไฟล์ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง", "error");
@@ -469,15 +377,8 @@ export default function App() {
   };
 
   const exportToCSV = () => {
-    const headers = [
-      "Date",
-      "Course",
-      "Duration (Hrs)",
-      "Total Seats",
-      "Total Cost (THB)",
-      "Attendee Details (ID/Name/Dept)",
-    ];
-    const rows = filteredRecords.map((r) => {
+    const headers = ['Date', 'Course', 'Duration (Hrs)', 'Total Seats', 'Total Cost (THB)', 'Attendee Details (ID/Name/Dept)'];
+    const rows = filteredRecords.map(r => {
       const cost = r.totalCost || r.cost || 0;
       const duration = r.durationHours || 0;
       let seats = 0;
@@ -485,25 +386,16 @@ export default function App() {
 
       if (r.attendees) {
         seats = r.attendees.length;
-        details = r.attendees
-          .map((a) => `[${a.empId || "-"}] ${a.name || "-"} (${a.department})`)
-          .join(" | ");
+        details = r.attendees.map(a => `[${a.empId||'-'}] ${a.name||'-'} (${a.department})`).join(" | ");
       } else if (r.allocations) {
-        seats = r.allocations.reduce(
-          (sum, a) => sum + Number(a.participants),
-          0
-        );
-        details = r.allocations
-          .map((a) => `${a.department} (${a.participants} pax)`)
-          .join(" | ");
+        seats = r.allocations.reduce((sum, a) => sum + Number(a.participants), 0);
+        details = r.allocations.map(a => `${a.department} (${a.participants} pax)`).join(" | ");
       }
 
       return [r.date, `"${r.course}"`, duration, seats, cost, `"${details}"`];
     });
-
-    const csvContent =
-      "data:text/csv;charset=utf-8,\uFEFF" +
-      [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
+    
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -517,78 +409,48 @@ export default function App() {
   const handleEditClick = (record) => {
     let initialAttendees = [];
     if (record.attendees) {
-      initialAttendees = record.attendees.map((a) => ({
-        ...a,
-        customDepartment: "",
-      }));
+      initialAttendees = record.attendees.map(a => ({...a, customDepartment: ''}));
     } else if (record.allocations) {
-      record.allocations.forEach((alloc) => {
-        for (let i = 0; i < Number(alloc.participants || 0); i++) {
-          initialAttendees.push({
-            empId: "",
-            name: "Legacy Data",
-            department: alloc.department,
-            customDepartment: "",
-          });
+      record.allocations.forEach(alloc => {
+        for(let i=0; i<Number(alloc.participants || 0); i++) {
+          initialAttendees.push({ empId: '', name: 'Legacy Data', department: alloc.department, customDepartment: '' });
         }
       });
     }
 
     setFormData({
-      course: record.course || "",
-      date: record.date || "",
-      totalCost: record.totalCost || record.cost || "",
-      durationHours: record.durationHours || "",
-      attendees:
-        initialAttendees.length > 0
-          ? initialAttendees
-          : [
-              {
-                empId: "",
-                name: "",
-                department: availableDepartments[0],
-                customDepartment: "",
-              },
-            ],
+      type: record.type || 'Training',
+      course: record.course || '',
+      date: record.date || '',
+      totalCost: record.totalCost || record.cost || '',
+      durationHours: record.durationHours || '',
+      attendees: initialAttendees.length > 0 ? initialAttendees : [{ empId: '', name: '', department: availableDepartments[0], customDepartment: '' }]
     });
     setEditingId(record.id);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const resetForm = () => {
     setFormData({
-      course: "",
-      date: "",
-      totalCost: "",
-      durationHours: "",
-      attendees: [
-        {
-          empId: "",
-          name: "",
-          department: availableDepartments[0] || "Underwriting",
-          customDepartment: "",
-        },
-      ],
+      type: 'Training',
+      course: '', date: '', totalCost: '', durationHours: '',
+      attendees: [{ empId: '', name: '', department: availableDepartments[0] || 'Underwriting', customDepartment: '' }]
     });
     setEditingId(null);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!user || !formData.course || !formData.totalCost || !formData.date)
-      return;
-
+    if (!user || !formData.course || !formData.totalCost || !formData.date) return;
+    
     const validAttendees = [];
     for (let a of formData.attendees) {
-      if (a.name.trim() !== "" || a.empId.trim() !== "") {
-        const finalDepartment =
-          a.department === "Other"
-            ? a.customDepartment.trim() || "Unknown"
-            : a.department;
+      if (a.name.trim() !== '' || a.empId.trim() !== '') {
+        const finalDepartment = a.department === 'Other' ? (a.customDepartment.trim() || 'Unknown') : a.department;
         validAttendees.push({
           empId: a.empId.trim(),
           name: a.name.trim(),
-          department: finalDepartment,
+          department: finalDepartment
         });
       }
     }
@@ -600,32 +462,22 @@ export default function App() {
 
     const recordId = editingId || Date.now().toString();
     const newRecord = {
+      type: formData.type,
       course: formData.course,
       date: formData.date,
       totalCost: Number(formData.totalCost),
       durationHours: Number(formData.durationHours || 0),
-      attendees: validAttendees,
+      attendees: validAttendees
     };
-
-    const currentCost = editingId
-      ? records.find((r) => r.id === editingId)?.totalCost ||
-        records.find((r) => r.id === editingId)?.cost ||
-        0
-      : 0;
-    const willExceedBudget =
-      metrics.totalSpent - currentCost + newRecord.totalCost > annualBudget;
+    
+    const currentCost = editingId ? (records.find(r => r.id === editingId)?.totalCost || records.find(r => r.id === editingId)?.cost || 0) : 0;
+    const willExceedBudget = (metrics.totalSpent - currentCost + newRecord.totalCost) > annualBudget;
 
     try {
-      await setDoc(doc(db, "training_records", recordId), newRecord);
+      await setDoc(doc(db, 'training_records', recordId), newRecord);
       resetForm();
-      if (willExceedBudget)
-        showToast("Record saved, but warning: Budget exceeded!", "warning");
-      else
-        showToast(
-          editingId
-            ? "Record updated successfully!"
-            : "Record added successfully!"
-        );
+      if (willExceedBudget) showToast("Record saved, but warning: Budget exceeded!", "warning");
+      else showToast(editingId ? "Record updated successfully!" : "Record added successfully!");
     } catch (error) {
       console.error("Error saving record:", error);
       showToast("Error saving record", "error");
@@ -635,20 +487,16 @@ export default function App() {
   const deleteRecord = async (id) => {
     if (!user) return;
     try {
-      await deleteDoc(doc(db, "training_records", id));
+      await deleteDoc(doc(db, 'training_records', id));
       showToast("Record deleted.");
-    } catch (error) {
-      console.error("Error deleting record:", error);
-    }
+    } catch (error) { console.error("Error deleting record:", error); }
   };
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans">
         <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
-        <h2 className="text-xl font-medium text-slate-700">
-          Connecting to secure cloud storage...
-        </h2>
+        <h2 className="text-xl font-medium text-slate-700">Connecting to secure cloud storage...</h2>
       </div>
     );
   }
@@ -657,70 +505,49 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans text-slate-800">
+      
       {toast && (
-        <div
-          className={`fixed top-4 right-4 z-50 flex items-center px-4 py-3 rounded-lg shadow-lg text-white ${
-            toast.type === "warning"
-              ? "bg-amber-500"
-              : toast.type === "error"
-              ? "bg-red-500"
-              : "bg-emerald-500"
-          } transition-opacity duration-300`}
-        >
-          {toast.type === "warning" ? (
-            <AlertCircle size={20} className="mr-2" />
-          ) : (
-            <CheckCircle size={20} className="mr-2" />
-          )}
+        <div className={`fixed top-4 right-4 z-50 flex items-center px-4 py-3 rounded-lg shadow-lg text-white ${toast.type === 'warning' ? 'bg-amber-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-emerald-500'} transition-opacity duration-300`}>
+          {toast.type === 'warning' ? <AlertCircle size={20} className="mr-2" /> : <CheckCircle size={20} className="mr-2" />}
           <span className="font-medium">{toast.message}</span>
         </div>
       )}
 
       <div className="max-w-[1400px] mx-auto space-y-6">
+        
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">
-              Training Hours & Budget
-            </h1>
+            <h1 className="text-3xl font-bold text-slate-900">Training Hours & Budget</h1>
             <p className="text-slate-500 mt-1 flex items-center gap-2">
-              Track multi-department spending, participation, and learning hours
-              <span className="text-blue-500 font-medium text-sm border-l border-slate-300 pl-2">
-                Live Auto-Save ON
-              </span>
+              Track multi-department spending, participation, and learning hours 
+              <span className="text-blue-500 font-medium text-sm border-l border-slate-300 pl-2">Live Auto-Save ON</span>
               {loadedEmployeesCount > 0 && (
                 <span className="text-emerald-600 font-medium text-sm flex items-center border-l border-slate-300 pl-2">
-                  <Database size={14} className="mr-1" /> {loadedEmployeesCount}{" "}
-                  Employees Loaded
+                  <Database size={14} className="mr-1" /> {loadedEmployeesCount} Employees Loaded
                 </span>
               )}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <div className="bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
-              <select
-                value={filterYear}
+              <select 
+                value={filterYear} 
                 onChange={(e) => setFilterYear(e.target.value)}
                 className="bg-transparent text-sm font-medium text-slate-700 focus:outline-none cursor-pointer"
               >
-                {availableYears.map((year) => (
-                  <option key={year} value={year}>
-                    {year === "All" ? "All Time" : `${year} Year`}
-                  </option>
+                {availableYears.map(year => (
+                  <option key={year} value={year}>{year === 'All' ? 'All Time' : `${year} Year`}</option>
                 ))}
               </select>
             </div>
             <div className="flex items-center space-x-3 bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm">
-              <label className="text-sm font-medium text-slate-500">
-                Total Budget (THB):
-              </label>
+              <label className="text-sm font-medium text-slate-500">Total Budget (THB):</label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">
-                  ฿
-                </span>
-                <input
-                  type="number"
-                  value={annualBudget}
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">฿</span>
+                <input 
+                  type="number" 
+                  value={annualBudget} 
                   onChange={handleBudgetChange}
                   onBlur={(e) => saveBudgetToCloud(Number(e.target.value))}
                   className="w-32 pl-7 pr-2 py-1.5 text-right font-bold text-slate-800 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
@@ -733,166 +560,84 @@ export default function App() {
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
-            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
-              <DollarSign size={20} />
-            </div>
+            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><DollarSign size={20} /></div>
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase">
-                Total Spent
+              <p className="text-[10px] font-bold text-slate-500 uppercase">Total Spent</p>
+              <h3 className="text-lg font-bold text-slate-800">฿{metrics.totalSpent.toLocaleString()}</h3>
+              <p className="text-[9px] text-slate-400 mt-0.5">
+                Train: ฿{metrics.trainingSpent.toLocaleString()} | Engage: ฿{metrics.engagementSpent.toLocaleString()}
               </p>
-              <h3 className="text-lg font-bold text-slate-800">
-                ฿{metrics.totalSpent.toLocaleString()}
-              </h3>
             </div>
           </div>
-
+          
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
-            <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">
-              <TrendingUp size={20} />
-            </div>
+            <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><TrendingUp size={20} /></div>
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase">
-                Remaining
-              </p>
-              <h3
-                className={`text-lg font-bold ${
-                  annualBudget - metrics.totalSpent < 0
-                    ? "text-red-500"
-                    : "text-slate-800"
-                }`}
-              >
+              <p className="text-[10px] font-bold text-slate-500 uppercase">Remaining</p>
+              <h3 className={`text-lg font-bold ${annualBudget - metrics.totalSpent < 0 ? 'text-red-500' : 'text-slate-800'}`}>
                 ฿{(annualBudget - metrics.totalSpent).toLocaleString()}
               </h3>
             </div>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
-            <div className="p-2 bg-pink-100 text-pink-600 rounded-lg">
-              <UserCheck size={20} />
-            </div>
+            <div className="p-2 bg-pink-100 text-pink-600 rounded-lg"><UserCheck size={20} /></div>
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase">
-                Unique Trained
-              </p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase">Unique Trained</p>
+              <h3 className="text-lg font-bold text-slate-800">{metrics.uniqueHeads} <span className="text-xs font-normal text-slate-500">Heads</span></h3>
+            </div>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
+            <div className="p-2 bg-amber-100 text-amber-600 rounded-lg"><Users size={20} /></div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase">Total Seats Filled</p>
+              <h3 className="text-lg font-bold text-slate-800">{metrics.totalParticipants}</h3>
+            </div>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
+            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><Clock size={20} /></div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase">Learning Hours</p>
+              <h3 className="text-lg font-bold text-slate-800">{metrics.totalLearningHours.toLocaleString()}</h3>
+            </div>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
+            <div className="p-2 bg-cyan-100 text-cyan-600 rounded-lg"><Target size={20} /></div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase">Avg Hrs/Person</p>
               <h3 className="text-lg font-bold text-slate-800">
-                {metrics.uniqueHeads}{" "}
-                <span className="text-xs font-normal text-slate-500">
-                  Heads
-                </span>
+                {metrics.uniqueHeads ? (metrics.totalLearningHours / metrics.uniqueHeads).toFixed(1) : 0} <span className="text-xs font-normal text-slate-500">Hrs</span>
               </h3>
             </div>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
-            <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
-              <Users size={20} />
-            </div>
+            <div className="p-2 bg-purple-100 text-purple-600 rounded-lg"><BookOpen size={20} /></div>
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase">
-                Total Seats Filled
-              </p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase">Cost/Seat</p>
               <h3 className="text-lg font-bold text-slate-800">
-                {metrics.totalParticipants}
-              </h3>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
-            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
-              <Clock size={20} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase">
-                Learning Hours
-              </p>
-              <h3 className="text-lg font-bold text-slate-800">
-                {metrics.totalLearningHours.toLocaleString()}
-              </h3>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
-            <div className="p-2 bg-cyan-100 text-cyan-600 rounded-lg">
-              <Target size={20} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase">
-                Avg Hrs/Person
-              </p>
-              <h3 className="text-lg font-bold text-slate-800">
-                {metrics.uniqueHeads
-                  ? (metrics.totalLearningHours / metrics.uniqueHeads).toFixed(
-                      1
-                    )
-                  : 0}{" "}
-                <span className="text-xs font-normal text-slate-500">Hrs</span>
-              </h3>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
-            <div className="p-2 bg-purple-100 text-purple-600 rounded-lg">
-              <BookOpen size={20} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase">
-                Cost/Seat
-              </p>
-              <h3 className="text-lg font-bold text-slate-800">
-                ฿
-                {metrics.totalParticipants
-                  ? Math.round(
-                      metrics.totalSpent / metrics.totalParticipants
-                    ).toLocaleString()
-                  : 0}
+                ฿{metrics.totalParticipants ? Math.round(metrics.totalSpent / metrics.totalParticipants).toLocaleString() : 0}
               </h3>
             </div>
           </div>
         </div>
 
-        {/* Charts Section - Now a 4 column layout */}
+        {/* Charts Section - 4 column layout */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-2 flex flex-col">
-            <h3 className="text-lg font-bold mb-4">
-              Proportional Spent by Department (THB)
-            </h3>
+            <h3 className="text-lg font-bold mb-4">Proportional Spent by Department (THB)</h3>
             <div className="h-[360px] flex-1">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={metrics.chartData}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 25 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    stroke="#e2e8f0"
-                  />
-                  <XAxis
-                    dataKey="name"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 12 }}
-                    interval={0}
-                    angle={-45}
-                    textAnchor="end"
-                  />
-                  <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    tickFormatter={(value) => `฿${value.toLocaleString()}`}
-                  />
-                  <RechartsTooltip
-                    cursor={{ fill: "transparent" }}
-                    formatter={(value) =>
-                      `฿${Math.round(value).toLocaleString()}`
-                    }
-                  />
-                  <Bar
-                    dataKey="spent"
-                    name="Spent"
-                    fill="#3b82f6"
-                    radius={[4, 4, 0, 0]}
-                  />
+                <BarChart data={metrics.chartData} margin={{ top: 20, right: 30, left: 20, bottom: 25 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12}} interval={0} angle={-45} textAnchor="end" />
+                  <YAxis axisLine={false} tickLine={false} tickFormatter={(value) => `฿${value.toLocaleString()}`} />
+                  <RechartsTooltip cursor={{fill: 'transparent'}} formatter={(value) => `฿${Math.round(value).toLocaleString()}`} />
+                  <Bar dataKey="spent" name="Spent" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -903,38 +648,18 @@ export default function App() {
             <div className="h-[360px] flex-1">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie
-                    data={metrics.pieData}
-                    cx="50%"
-                    cy="40%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="hours"
-                    nameKey="name"
-                  >
-                    {metrics.pieData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={COLORS[index % COLORS.length]}
-                      />
-                    ))}
+                  <Pie data={metrics.pieData} cx="50%" cy="40%" innerRadius={50} outerRadius={80} paddingAngle={5} dataKey="hours" nameKey="name">
+                    {metrics.pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                   </Pie>
                   <RechartsTooltip formatter={(value) => `${value} Hrs`} />
-                  <Legend
+                  <Legend 
                     content={(props) => {
                       const { payload } = props;
                       return (
                         <ul className="flex flex-wrap justify-center gap-x-3 gap-y-2 text-xs mt-2 max-h-[140px] overflow-y-auto px-2 custom-scrollbar">
                           {payload.map((entry, index) => (
-                            <li
-                              key={`item-${index}`}
-                              className="flex items-center text-slate-600"
-                            >
-                              <span
-                                className="w-2.5 h-2.5 rounded-full mr-1.5 flex-shrink-0"
-                                style={{ backgroundColor: entry.color }}
-                              ></span>
+                            <li key={`item-${index}`} className="flex items-center text-slate-600">
+                              <span className="w-2.5 h-2.5 rounded-full mr-1.5 flex-shrink-0" style={{ backgroundColor: entry.color }}></span>
                               {entry.value}
                             </li>
                           ))}
@@ -947,65 +672,41 @@ export default function App() {
             </div>
           </div>
 
-          {/* New Leaderboard Widget */}
+          {/* Leaderboard Widget */}
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-1 flex flex-col">
             <h3 className="text-lg font-bold mb-4 flex items-center text-slate-800">
-              <Trophy size={20} className="mr-2 text-amber-500" /> Top 5
-              Learners
+              <Trophy size={20} className="mr-2 text-amber-500"/> Top 5 Learners
             </h3>
             <div className="flex-1 overflow-y-auto h-[360px]">
               {leaderboard.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                  <BookOpen size={32} className="mb-2 opacity-50" />
+                  <BookOpen size={32} className="mb-2 opacity-50"/>
                   <p className="text-sm">ยังไม่มีข้อมูลการอบรม</p>
                 </div>
               ) : (
                 <ul className="space-y-4 pr-2">
                   {leaderboard.map((learner, index) => (
-                    <li
-                      key={index}
-                      className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100 hover:border-blue-200 transition-colors"
-                    >
+                    <li key={index} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100 hover:border-blue-200 transition-colors">
                       <div className="flex items-center gap-3 overflow-hidden">
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0
-                          ${
-                            index === 0
-                              ? "bg-amber-400 shadow-sm shadow-amber-200"
-                              : index === 1
-                              ? "bg-slate-300 shadow-sm shadow-slate-200"
-                              : index === 2
-                              ? "bg-amber-600 shadow-sm shadow-amber-200"
-                              : "bg-blue-100 text-blue-600"
-                          }`}
-                        >
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0
+                          ${index === 0 ? 'bg-amber-400 shadow-sm shadow-amber-200' : 
+                            index === 1 ? 'bg-slate-300 shadow-sm shadow-slate-200' : 
+                            index === 2 ? 'bg-amber-600 shadow-sm shadow-amber-200' : 
+                            'bg-blue-100 text-blue-600'}`}>
                           {index + 1}
                         </div>
                         <div className="min-w-0">
-                          <p
-                            className="text-sm font-bold text-slate-800 truncate"
-                            title={learner.name || learner.empId}
-                          >
-                            {learner.name || learner.empId || "Unknown"}
+                          <p className="text-sm font-bold text-slate-800 truncate" title={learner.name || learner.empId}>
+                            {learner.name || learner.empId || 'Unknown'}
                           </p>
-                          <p
-                            className="text-[10px] text-slate-500 truncate"
-                            title={learner.department}
-                          >
+                          <p className="text-[10px] text-slate-500 truncate" title={learner.department}>
                             {learner.department}
                           </p>
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0 ml-2">
-                        <p className="text-sm font-bold text-indigo-600">
-                          {learner.totalHours}{" "}
-                          <span className="text-xs font-normal text-indigo-400">
-                            h
-                          </span>
-                        </p>
-                        <p className="text-[10px] text-slate-500">
-                          {learner.courses} courses
-                        </p>
+                        <p className="text-sm font-bold text-indigo-600">{learner.totalHours} <span className="text-xs font-normal text-indigo-400">h</span></p>
+                        <p className="text-[10px] text-slate-500">{learner.courses} courses</p>
                       </div>
                     </li>
                   ))}
@@ -1013,95 +714,65 @@ export default function App() {
               )}
             </div>
           </div>
+
         </div>
 
         {/* Data Input & Table Section */}
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+          
           {/* Input Form */}
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-fit xl:col-span-1">
             <h3 className="text-lg font-bold mb-4 flex items-center">
-              <PlusCircle size={20} className="mr-2 text-blue-600" /> Add
-              Training Record
+              <PlusCircle size={20} className="mr-2 text-blue-600"/> Add Record
             </h3>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Course Name
+              
+              <div className="flex gap-4 p-1 bg-slate-100 rounded-lg">
+                <label className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md cursor-pointer transition-colors ${formData.type === 'Training' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                  <input type="radio" name="type" value="Training" checked={formData.type === 'Training'} onChange={handleInputChange} className="hidden" />
+                  <BookOpen size={16} /> Training
                 </label>
-                <input
-                  required
-                  type="text"
-                  name="course"
-                  value={formData.course}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. AML Compliance"
-                />
+                <label className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md cursor-pointer transition-colors ${formData.type === 'Engagement' ? 'bg-white text-pink-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                  <input type="radio" name="type" value="Engagement" checked={formData.type === 'Engagement'} onChange={handleInputChange} className="hidden" />
+                  <PartyPopper size={16} /> Engagement
+                </label>
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Activity / Course Name</label>
+                <input required type="text" name="course" value={formData.course} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder={formData.type === 'Training' ? "e.g. AML Compliance" : "e.g. Songkran Festival"} />
+              </div>
+              
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Date
-                  </label>
-                  <input
-                    required
-                    type="date"
-                    name="date"
-                    value={formData.date}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
+                  <input required type="date" name="date" value={formData.date} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Duration (Hrs)
-                  </label>
-                  <input
-                    required
-                    type="number"
-                    min="0.5"
-                    step="0.5"
-                    name="durationHours"
-                    value={formData.durationHours}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g. 2.5"
-                  />
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Duration (Hrs)</label>
+                  <input required type="number" min="0.5" step="0.5" name="durationHours" value={formData.durationHours} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. 2.5" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Total Course Cost (฿)
-                </label>
-                <input
-                  required
-                  type="number"
-                  min="0"
-                  name="totalCost"
-                  value={formData.totalCost}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="0"
-                />
+                <label className="block text-sm font-medium text-slate-700 mb-1">Total Course Cost (฿)</label>
+                <input required type="number" min="0" name="totalCost" value={formData.totalCost} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0" />
               </div>
 
               {/* Individual Attendees Section */}
               <div className="pt-2 border-t border-slate-100">
                 <div className="flex justify-between items-center mb-2">
-                  <label className="block text-sm font-medium text-slate-700">
-                    รายชื่อผู้เข้าร่วม (Attendees)
-                  </label>
-                  <button
-                    type="button"
-                    onClick={addAttendee}
-                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center bg-blue-50 px-2 py-1 rounded"
-                  >
-                    + Add Person
-                  </button>
+                  <label className="block text-sm font-medium text-slate-700">รายชื่อผู้เข้าร่วม (Attendees)</label>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={handleAddAllStaff} className="text-xs font-semibold text-pink-600 hover:text-pink-800 flex items-center bg-pink-50 px-2 py-1 rounded" title="ดึงรายชื่อพนักงานทั้งหมด (สำหรับ All Staff)">
+                      <Users size={12} className="mr-1" /> All Staff
+                    </button>
+                    <button type="button" onClick={addAttendee} className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center bg-blue-50 px-2 py-1 rounded">
+                      + Add
+                    </button>
+                  </div>
                 </div>
-
+                
                 <datalist id="employee-names-list">
                   {Object.values(employeeMaster).map((emp, idx) => (
                     <option key={idx} value={emp.name} />
@@ -1110,79 +781,47 @@ export default function App() {
 
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                   {formData.attendees.map((attendee, index) => (
-                    <div
-                      key={index}
-                      className="flex flex-col gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg relative group"
-                    >
+                    <div key={index} className="flex flex-col gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg relative group">
                       {formData.attendees.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeAttendee(index)}
-                          className="absolute -top-2 -right-2 bg-white rounded-full p-1 text-slate-400 hover:text-red-500 shadow-sm border border-slate-200 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
+                        <button type="button" onClick={() => removeAttendee(index)} className="absolute -top-2 -right-2 bg-white rounded-full p-1 text-slate-400 hover:text-red-500 shadow-sm border border-slate-200 opacity-0 group-hover:opacity-100 transition-opacity">
                           <X size={14} />
                         </button>
                       )}
-
+                      
                       <div className="flex gap-2">
-                        <input
-                          type="text"
-                          placeholder="Emp ID"
-                          value={attendee.empId}
-                          onChange={(e) =>
-                            handleAttendeeChange(index, "empId", e.target.value)
-                          }
-                          className="w-1/3 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white placeholder:text-blue-300"
+                        <input 
+                          type="text" 
+                          placeholder="Emp ID" 
+                          value={attendee.empId} 
+                          onChange={(e) => handleAttendeeChange(index, 'empId', e.target.value)} 
+                          className="w-1/3 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white placeholder:text-blue-300" 
                         />
-                        <input
-                          type="text"
-                          placeholder="Name - Surname"
+                        <input 
+                          type="text" 
+                          placeholder="Name - Surname" 
                           list="employee-names-list"
-                          value={attendee.name}
-                          onChange={(e) =>
-                            handleAttendeeChange(index, "name", e.target.value)
-                          }
-                          className="w-2/3 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                          value={attendee.name} 
+                          onChange={(e) => handleAttendeeChange(index, 'name', e.target.value)} 
+                          className="w-2/3 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" 
                         />
                       </div>
-                      <select
-                        value={attendee.department}
-                        onChange={(e) =>
-                          handleAttendeeChange(
-                            index,
-                            "department",
-                            e.target.value
-                          )
-                        }
+                      <select 
+                        value={attendee.department} 
+                        onChange={(e) => handleAttendeeChange(index, 'department', e.target.value)} 
                         className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                       >
-                        {availableDepartments.map((d) => (
-                          <option key={d} value={d}>
-                            {d}
-                          </option>
-                        ))}
-                        <option
-                          value="Other"
-                          className="font-semibold text-blue-600"
-                        >
-                          + เพิ่มแผนกใหม่ (Other)
-                        </option>
+                        {availableDepartments.map(d => <option key={d} value={d}>{d}</option>)}
+                        <option value="Other" className="font-semibold text-blue-600">+ เพิ่มแผนกใหม่ (Other)</option>
                       </select>
-
-                      {attendee.department === "Other" && (
-                        <input
-                          type="text"
-                          placeholder="พิมพ์ชื่อแผนกใหม่ที่นี่..."
+                      
+                      {attendee.department === 'Other' && (
+                        <input 
+                          type="text" 
+                          placeholder="พิมพ์ชื่อแผนกใหม่ที่นี่..." 
                           required
-                          value={attendee.customDepartment}
-                          onChange={(e) =>
-                            handleAttendeeChange(
-                              index,
-                              "customDepartment",
-                              e.target.value
-                            )
-                          }
-                          className="w-full px-2 py-1.5 text-sm border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                          value={attendee.customDepartment} 
+                          onChange={(e) => handleAttendeeChange(index, 'customDepartment', e.target.value)} 
+                          className="w-full px-2 py-1.5 text-sm border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" 
                         />
                       )}
                     </div>
@@ -1191,22 +830,11 @@ export default function App() {
               </div>
 
               <div className="pt-4 flex gap-2">
-                <button
-                  type="submit"
-                  className={`flex-1 ${
-                    editingId
-                      ? "bg-amber-500 hover:bg-amber-600"
-                      : "bg-blue-600 hover:bg-blue-700"
-                  } text-white font-medium py-2 px-4 rounded-lg transition-colors shadow-sm`}
-                >
-                  {editingId ? "Update Record" : "Save to Cloud"}
+                <button type="submit" className={`flex-1 ${editingId ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-700'} text-white font-medium py-2 px-4 rounded-lg transition-colors shadow-sm`}>
+                  {editingId ? 'Update Record' : 'Save to Cloud'}
                 </button>
                 {editingId && (
-                  <button
-                    type="button"
-                    onClick={resetForm}
-                    className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium py-2 px-4 rounded-lg transition-colors shadow-sm"
-                  >
+                  <button type="button" onClick={resetForm} className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium py-2 px-4 rounded-lg transition-colors shadow-sm">
                     Cancel
                   </button>
                 )}
@@ -1214,23 +842,23 @@ export default function App() {
             </form>
           </div>
 
-          {/* Data Table */}
+          {/* Data Table with Expandable Rows */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm xl:col-span-3 overflow-hidden flex flex-col">
             <div className="p-6 border-b border-slate-100 flex flex-wrap gap-4 justify-between items-center">
               <div className="flex items-center gap-3">
                 <h3 className="text-lg font-bold">Raw Data Log</h3>
               </div>
-
+              
               <div className="flex items-center gap-2">
-                <input
-                  type="file"
-                  accept=".csv"
-                  id="csv-upload"
+                <input 
+                  type="file" 
+                  accept=".csv" 
+                  id="csv-upload" 
                   ref={fileInputRef}
-                  className="hidden"
-                  onChange={handleFileUpload}
+                  className="hidden" 
+                  onChange={handleFileUpload} 
                 />
-                <label
+                <label 
                   htmlFor="csv-upload"
                   className="flex items-center space-x-2 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-emerald-200"
                   title="Upload Employee Master List (CSV)"
@@ -1239,7 +867,7 @@ export default function App() {
                   <span>Import Emp. DB</span>
                 </label>
 
-                <button
+                <button 
                   onClick={exportToCSV}
                   className="flex items-center space-x-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors border border-blue-200"
                 >
@@ -1263,52 +891,46 @@ export default function App() {
                 <tbody className="divide-y divide-slate-100 text-sm">
                   {filteredRecords.length === 0 ? (
                     <tr>
-                      <td
-                        colSpan="6"
-                        className="p-8 text-center text-slate-400"
-                      >
-                        No records found. Add your first training log above!
-                      </td>
+                      <td colSpan="6" className="p-8 text-center text-slate-400">No records found. Add your first training log above!</td>
                     </tr>
                   ) : (
                     filteredRecords.map((record) => {
                       let seats = 0;
                       if (record.attendees) seats = record.attendees.length;
-                      else if (record.allocations)
-                        seats = record.allocations.reduce(
-                          (sum, a) => sum + Number(a.participants),
-                          0
-                        );
-
+                      else if (record.allocations) seats = record.allocations.reduce((sum, a) => sum + Number(a.participants), 0);
+                      
                       const cost = record.totalCost || record.cost || 0;
                       const duration = record.durationHours || 0;
                       const isExpanded = expandedRows.has(record.id);
 
                       return (
                         <React.Fragment key={record.id}>
-                          <tr
-                            className={`hover:bg-slate-50 transition-colors ${
-                              editingId === record.id ? "bg-amber-50" : ""
-                            } ${isExpanded ? "bg-blue-50/40" : ""}`}
-                          >
+                          <tr className={`hover:bg-slate-50 transition-colors ${editingId === record.id ? 'bg-amber-50' : ''} ${isExpanded ? 'bg-blue-50/40' : ''}`}>
                             <td className="p-4 whitespace-nowrap text-slate-500 flex items-center gap-2">
-                              <button
+                              <button 
                                 onClick={() => toggleRow(record.id)}
                                 className="p-1 rounded hover:bg-slate-200 text-slate-500 transition-colors"
                               >
-                                {isExpanded ? (
-                                  <ChevronDown size={16} />
-                                ) : (
-                                  <ChevronRight size={16} />
-                                )}
+                                {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                               </button>
                               {record.date}
                             </td>
                             <td className="p-4 font-medium text-slate-800">
-                              {record.course}
+                              <div className="flex items-center gap-2">
+                                {record.type === 'Engagement' ? (
+                                  <span className="px-1.5 py-0.5 bg-pink-100 text-pink-600 rounded text-[10px] font-bold uppercase tracking-wider flex items-center" title="Engagement Activity">
+                                    <PartyPopper size={10} className="mr-1" /> ENGAGE
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded text-[10px] font-bold uppercase tracking-wider flex items-center" title="Training">
+                                    <BookOpen size={10} className="mr-1" /> TRAIN
+                                  </span>
+                                )}
+                                {record.course}
+                              </div>
                             </td>
                             <td className="p-4">
-                              <span
+                              <span 
                                 className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-medium whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors border border-slate-200"
                                 onClick={() => toggleRow(record.id)}
                                 title="Click to see attendees"
@@ -1317,67 +939,36 @@ export default function App() {
                               </span>
                             </td>
                             <td className="p-4 text-right whitespace-nowrap text-slate-600">
-                              {duration}h{" "}
-                              <span className="opacity-50 text-xs">
-                                x {seats}
-                              </span>
+                              {duration}h <span className="opacity-50 text-xs">x {seats}</span>
                             </td>
-                            <td className="p-4 text-right text-slate-600">
-                              ฿{cost.toLocaleString()}
-                            </td>
+                            <td className="p-4 text-right text-slate-600">฿{cost.toLocaleString()}</td>
                             <td className="p-4 flex justify-center space-x-1">
-                              <button
-                                onClick={() => handleEditClick(record)}
-                                className="p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
-                                title="Edit"
-                              >
+                              <button onClick={() => handleEditClick(record)} className="p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors" title="Edit">
                                 <Edit2 size={16} />
                               </button>
-                              <button
-                                onClick={() => deleteRecord(record.id)}
-                                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Delete"
-                              >
+                              <button onClick={() => deleteRecord(record.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
                                 <Trash2 size={16} />
                               </button>
                             </td>
                           </tr>
-
+                          
                           {/* Expanded Row Details */}
                           {isExpanded && (
                             <tr className="bg-slate-50/50 border-b border-slate-100">
                               <td colSpan="6" className="p-4 pl-12">
                                 <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
-                                  <h4 className="text-xs font-bold text-slate-500 uppercase mb-3">
-                                    Attendee List ({seats} Persons)
-                                  </h4>
-
-                                  {record.attendees &&
-                                  record.attendees.length > 0 ? (
+                                  <h4 className="text-xs font-bold text-slate-500 uppercase mb-3">Attendee List ({seats} Persons)</h4>
+                                  
+                                  {record.attendees && record.attendees.length > 0 ? (
                                     <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                                       {record.attendees.map((a, idx) => (
-                                        <li
-                                          key={idx}
-                                          className="flex items-start p-2 bg-slate-50 border border-slate-100 rounded-md"
-                                        >
-                                          <UserCheck
-                                            size={14}
-                                            className="mt-0.5 mr-2 text-emerald-500 flex-shrink-0"
-                                          />
+                                        <li key={idx} className="flex items-start p-2 bg-slate-50 border border-slate-100 rounded-md">
+                                          <UserCheck size={14} className="mt-0.5 mr-2 text-emerald-500 flex-shrink-0" />
                                           <div className="min-w-0">
-                                            <p
-                                              className="text-sm font-medium text-slate-800 truncate"
-                                              title={a.name || a.empId}
-                                            >
-                                              {a.empId ? `[${a.empId}] ` : ""}
-                                              {a.name || "Unknown Name"}
+                                            <p className="text-sm font-medium text-slate-800 truncate" title={a.name || a.empId}>
+                                              {a.empId ? `[${a.empId}] ` : ''}{a.name || 'Unknown Name'}
                                             </p>
-                                            <p
-                                              className="text-[10px] text-slate-500 truncate mt-0.5"
-                                              title={a.department}
-                                            >
-                                              {a.department}
-                                            </p>
+                                            <p className="text-[10px] text-slate-500 truncate mt-0.5" title={a.department}>{a.department}</p>
                                           </div>
                                         </li>
                                       ))}
@@ -1385,25 +976,15 @@ export default function App() {
                                   ) : (
                                     <div className="flex flex-wrap gap-2">
                                       {record.allocations?.map((a, idx) => (
-                                        <span
-                                          key={idx}
-                                          className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-md text-sm border border-slate-200"
-                                        >
-                                          {a.department}{" "}
-                                          <span className="font-semibold text-slate-800 ml-1">
-                                            {a.participants} pax
-                                          </span>
+                                        <span key={idx} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-md text-sm border border-slate-200">
+                                          {a.department} <span className="font-semibold text-slate-800 ml-1">{a.participants} pax</span>
                                         </span>
                                       ))}
-                                      {!record.allocations &&
-                                        record.department && (
-                                          <span className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-md text-sm border border-slate-200">
-                                            {record.department}{" "}
-                                            <span className="font-semibold text-slate-800 ml-1">
-                                              {record.participants} pax
-                                            </span>
-                                          </span>
-                                        )}
+                                      {(!record.allocations && record.department) && (
+                                        <span className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-md text-sm border border-slate-200">
+                                          {record.department} <span className="font-semibold text-slate-800 ml-1">{record.participants} pax</span>
+                                        </span>
+                                      )}
                                     </div>
                                   )}
                                 </div>
@@ -1418,6 +999,7 @@ export default function App() {
               </table>
             </div>
           </div>
+          
         </div>
       </div>
     </div>
