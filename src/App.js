@@ -49,6 +49,7 @@ export default function App() {
   const [filterYear, setFilterYear] = useState('All');
   const [toast, setToast] = useState(null);
   const [expandedRows, setExpandedRows] = useState(new Set());
+  const [showSpentBreakdown, setShowSpentBreakdown] = useState(false);
   const fileInputRef = useRef(null);
 
   // Form State
@@ -567,14 +568,35 @@ export default function App() {
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
-            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><DollarSign size={20} /></div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase">Total Spent</p>
-              <h3 className="text-lg font-bold text-slate-800">฿{metrics.totalSpent.toLocaleString()}</h3>
-              <p className="text-[9px] text-slate-400 mt-0.5">
-                Train: ฿{metrics.trainingSpent.toLocaleString()} | Engage: ฿{metrics.engagementSpent.toLocaleString()}
-              </p>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-start space-x-3">
+            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg mt-0.5"><DollarSign size={20} /></div>
+            <div className="flex-1 min-w-0">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">Total Spent</p>
+                  <h3 className="text-lg font-bold text-slate-800">฿{metrics.totalSpent.toLocaleString()}</h3>
+                </div>
+                <button 
+                  onClick={() => setShowSpentBreakdown(!showSpentBreakdown)}
+                  className="p-1 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded transition-colors mt-0.5"
+                  title="ดูรายละเอียดแยกตามประเภท"
+                >
+                  {showSpentBreakdown ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </button>
+              </div>
+              
+              {showSpentBreakdown && (
+                <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-slate-500 font-medium flex items-center"><BookOpen size={10} className="mr-1 text-blue-400"/> Train:</span>
+                    <span className="font-bold text-blue-600">฿{metrics.trainingSpent.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-slate-500 font-medium flex items-center"><PartyPopper size={10} className="mr-1 text-pink-400"/> Engage:</span>
+                    <span className="font-bold text-pink-600">฿{metrics.engagementSpent.toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           
