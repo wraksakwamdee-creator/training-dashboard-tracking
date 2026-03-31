@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell, LineChart, Line 
 } from 'recharts';
-import { DollarSign, Users, BookOpen, TrendingUp, Trash2, PlusCircle, Loader2, Download, Edit2, AlertCircle, CheckCircle, Clock, X, UserCheck, UploadCloud, Database, Target, Trophy, ChevronDown, ChevronRight, PartyPopper, Search, ChevronLeft, AlertTriangle, Calendar, User, Activity } from 'lucide-react';
+import { DollarSign, Users, BookOpen, TrendingUp, Trash2, PlusCircle, Loader2, Download, Edit2, AlertCircle, CheckCircle, Clock, X, UserCheck, UploadCloud, Database, Target, Trophy, ChevronDown, ChevronRight, PartyPopper, Search, ChevronLeft, AlertTriangle, Calendar, User, Activity, Building2 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
@@ -21,19 +21,40 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Base departments
+// Base Data
 const BASE_DEPARTMENTS = [
   'Underwriting', 'Claims', 'Actuarial', 'Agency Sales', 'Direct Sales', 
   'Customer Service', 'Legal & Compliance', 'IT & Technology', 
   'HR & Training', 'Finance & Accounting', 'Operations', 'Marketing',
   'Risk Management', 'Internal Audit', 'Investment', 'Business Development'
 ];
+const COMPANIES = ['PCHI', 'MSS']; 
 
 const COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', 
   '#ec4899', '#14b8a6', '#f97316', '#64748b', '#0ea5e9',
   '#84cc16', '#eab308', '#d946ef', '#f43f5e', '#06b6d4'
 ];
+
+// Helper: CSV Parser
+const splitCSV = (line) => {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+};
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -47,19 +68,18 @@ export default function App() {
   // UI States
   const [editingId, setEditingId] = useState(null);
   const [filterYear, setFilterYear] = useState('All');
+  const [filterCompany, setFilterCompany] = useState('All'); 
   const [toast, setToast] = useState(null);
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [showSpentBreakdown, setShowSpentBreakdown] = useState(false);
   
-  // Feature 1: Search & Pagination States
+  // Search & Pagination States
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
 
-  // Feature 3: Delete Confirmation State
+  // Delete & Profile States
   const [recordToDelete, setRecordToDelete] = useState(null);
-
-  // Feature 5: Individual Profile View State
   const [selectedEmployee, setSelectedEmployee] = useState(null);
 
   const fileInputRef = useRef(null);
@@ -71,10 +91,9 @@ export default function App() {
     date: '',
     totalCost: '',
     durationHours: '',
-    attendees: [{ empId: '', name: '', department: 'Underwriting', customDepartment: '' }]
+    attendees: [{ empId: '', name: '', company: 'PCHI', department: 'Underwriting', customDepartment: '' }]
   });
 
-  // 1. Authentication Effect
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -96,11 +115,9 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Data Fetching Effect
   useEffect(() => {
     if (!user) return; 
 
-    // Fetch Records
     const recordsRef = collection(db, 'training_records');
     const unsubRecords = onSnapshot(recordsRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -112,14 +129,12 @@ export default function App() {
       setIsLoading(false);
     });
 
-    // Fetch Budget
     const unsubSettings = onSnapshot(doc(db, 'settings', 'budget'), (docSnap) => {
       if (docSnap.exists() && docSnap.data().annualBudget !== undefined) {
         setAnnualBudget(docSnap.data().annualBudget);
       }
     });
 
-    // Fetch Employee Master Data
     const unsubEmp = onSnapshot(doc(db, 'settings', 'employee_master'), (docSnap) => {
       if (docSnap.exists() && docSnap.data().data) {
         setEmployeeMaster(docSnap.data().data);
@@ -129,7 +144,6 @@ export default function App() {
     return () => { unsubRecords(); unsubSettings(); unsubEmp(); };
   }, [user]);
 
-  // Dynamic Departments
   const availableDepartments = useMemo(() => {
     const usedDepts = records.flatMap(r => {
       if (r.attendees) return r.attendees.map(a => a.department);
@@ -140,18 +154,19 @@ export default function App() {
     return uniqueDepts.sort();
   }, [records]);
 
-  // Derived Data
   const availableYears = useMemo(() => {
     const years = records.map(r => r.date?.substring(0, 4)).filter(Boolean);
     return ['All', ...Array.from(new Set(years)).sort().reverse()];
   }, [records]);
 
   const filteredRecords = useMemo(() => {
-    if (filterYear === 'All') return records;
-    return records.filter(r => r.date?.startsWith(filterYear));
+    let result = records;
+    if (filterYear !== 'All') {
+      result = result.filter(r => r.date?.startsWith(filterYear));
+    }
+    return result;
   }, [records, filterYear]);
 
-  // --- Feature 1: Search & Pagination Derived Data ---
   const searchedRecords = useMemo(() => {
     if (!searchTerm.trim()) return filteredRecords;
     const lowerTerm = searchTerm.toLowerCase();
@@ -166,21 +181,20 @@ export default function App() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterYear]);
+  }, [searchTerm, filterYear, filterCompany]);
 
   const paginatedRecords = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
     return searchedRecords.slice(start, start + rowsPerPage);
   }, [searchedRecords, currentPage]);
 
-  // --- Feature 4: Duplicate Attendees Check ---
   const duplicateEmpIds = useMemo(() => {
     const ids = formData.attendees.map(a => a.empId.trim()).filter(id => id !== '');
     const duplicates = ids.filter((item, index) => ids.indexOf(item) !== index);
     return new Set(duplicates);
   }, [formData.attendees]);
 
-  // Core Metrics Calculation
+  // --- CORE METRICS & COMPANY FILTER LOGIC ---
   const metrics = useMemo(() => {
     let totalSpent = 0;
     let trainingSpent = 0;
@@ -206,29 +220,29 @@ export default function App() {
       } else if (record.allocations) {
         record.allocations.forEach(alloc => {
           for(let i=0; i<Number(alloc.participants || 0); i++) {
-            attendeesList.push({ department: alloc.department, isLegacy: true });
+            attendeesList.push({ company: 'PCHI', department: alloc.department, isLegacy: true });
           }
         });
       } else if (record.department) {
         for(let i=0; i<Number(record.participants || 0); i++) {
-          attendeesList.push({ department: record.department, isLegacy: true });
+          attendeesList.push({ company: 'PCHI', department: record.department, isLegacy: true });
         }
       }
 
       const recordTotalParticipants = attendeesList.length;
-      totalSpent += recordCost;
-      
-      if (isEngagement) {
-        engagementSpent += recordCost;
-      } else {
-        trainingSpent += recordCost;
-        totalParticipants += recordTotalParticipants;
-        totalLearningHours += (duration * recordTotalParticipants);
-      }
-
       const costPerPerson = recordTotalParticipants > 0 ? (recordCost / recordTotalParticipants) : 0;
 
+      let recordMatchingCost = 0;
+      let recordMatchingParticipants = 0;
+
       attendeesList.forEach(person => {
+        const pCompany = person.company || 'PCHI';
+        
+        if (filterCompany !== 'All' && pCompany !== filterCompany) return;
+
+        recordMatchingCost += costPerPerson;
+        recordMatchingParticipants += 1;
+
         const dept = person.department || 'Unknown';
         if (!deptStats[dept]) deptStats[dept] = { name: dept, spent: 0, participants: 0, hours: 0 };
         
@@ -244,15 +258,23 @@ export default function App() {
           }
         }
       });
+
+      totalSpent += recordMatchingCost;
+      if (isEngagement) {
+        engagementSpent += recordMatchingCost;
+      } else {
+        trainingSpent += recordMatchingCost;
+        totalParticipants += recordMatchingParticipants;
+        totalLearningHours += (duration * recordMatchingParticipants);
+      }
     });
 
     const chartData = Object.values(deptStats).filter(d => d.participants > 0 || d.spent > 0);
     const pieData = chartData.filter(d => d.hours > 0); 
 
     return { totalSpent, trainingSpent, engagementSpent, totalParticipants, totalLearningHours, uniqueHeads: uniqueAttendees.size, chartData, pieData };
-  }, [filteredRecords, availableDepartments]);
+  }, [filteredRecords, availableDepartments, filterCompany]);
 
-  // --- Feature 2: Monthly Trend Data Calculation ---
   const monthlyTrendData = useMemo(() => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const data = months.map(m => ({ month: m, trainingSpent: 0, engagementSpent: 0, hours: 0 }));
@@ -262,26 +284,39 @@ export default function App() {
       const monthIndex = parseInt(record.date.split('-')[1], 10) - 1;
       
       if (monthIndex >= 0 && monthIndex < 12) {
-        const cost = Number(record.totalCost || record.cost || 0);
         const isEngagement = record.type === 'Engagement';
+        const cost = Number(record.totalCost || record.cost || 0);
         const duration = isEngagement ? 0 : Number(record.durationHours || 0);
         
-        let pax = 0;
-        if (record.attendees) pax = record.attendees.length;
-        else if (record.allocations) pax = record.allocations.reduce((sum, a) => sum + Number(a.participants), 0);
+        let attendeesList = record.attendees || [];
+        if (!record.attendees) {
+          const pax = record.allocations ? record.allocations.reduce((sum, a) => sum + Number(a.participants), 0) : Number(record.participants || 0);
+          for(let i=0; i<pax; i++) attendeesList.push({ company: 'PCHI', isLegacy: true });
+        }
+
+        const costPerPerson = attendeesList.length > 0 ? (cost / attendeesList.length) : 0;
+        
+        let matchingCost = 0;
+        let matchingPax = 0;
+
+        attendeesList.forEach(person => {
+          const pCompany = person.company || 'PCHI';
+          if (filterCompany !== 'All' && pCompany !== filterCompany) return;
+          matchingCost += costPerPerson;
+          matchingPax += 1;
+        });
 
         if (isEngagement) {
-          data[monthIndex].engagementSpent += cost;
+          data[monthIndex].engagementSpent += matchingCost;
         } else {
-          data[monthIndex].trainingSpent += cost;
-          data[monthIndex].hours += (duration * pax);
+          data[monthIndex].trainingSpent += matchingCost;
+          data[monthIndex].hours += (duration * matchingPax);
         }
       }
     });
     return data;
-  }, [filteredRecords]);
+  }, [filteredRecords, filterCompany]);
 
-  // --- LEADERBOARD CALCULATION ---
   const leaderboard = useMemo(() => {
     const employeeStats = {};
     
@@ -291,6 +326,9 @@ export default function App() {
       const duration = Number(record.durationHours || 0);
       if (record.attendees) {
         record.attendees.forEach(person => {
+          const pCompany = person.company || 'PCHI';
+          if (filterCompany !== 'All' && pCompany !== filterCompany) return;
+
           if (!person.isLegacy && (person.empId || person.name)) {
             const uniqueKey = `${person.empId?.trim() || ''}|${person.name?.trim() || ''}`;
             if (uniqueKey !== '|') {
@@ -299,6 +337,7 @@ export default function App() {
                   empId: person.empId,
                   name: person.name,
                   department: person.department,
+                  company: pCompany,
                   totalHours: 0,
                   courses: 0
                 };
@@ -314,12 +353,11 @@ export default function App() {
     return Object.values(employeeStats)
       .sort((a, b) => b.totalHours - a.totalHours)
       .slice(0, 5);
-  }, [filteredRecords]);
+  }, [filteredRecords, filterCompany]);
 
-  // --- Feature 5: Employee Profile Calculation ---
   const employeeProfileData = useMemo(() => {
     if (!selectedEmployee) return null;
-    const { empId, name, department } = selectedEmployee;
+    const { empId, name, department, company } = selectedEmployee;
     const history = [];
     let totalHrs = 0;
     let totalTrainings = 0;
@@ -352,18 +390,11 @@ export default function App() {
     history.sort((a,b) => new Date(b.date) - new Date(a.date));
 
     return {
-      empId,
-      name,
-      department,
-      totalHours: totalHrs,
-      totalTrainings,
-      totalEngagements,
-      history
+      empId, name, department, company: company || 'PCHI',
+      totalHours: totalHrs, totalTrainings, totalEngagements, history
     };
   }, [selectedEmployee, filteredRecords]);
 
-
-  // --- Handlers ---
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -373,11 +404,11 @@ export default function App() {
     const newAttendees = [...formData.attendees];
     newAttendees[index][field] = value;
 
-    // --- AUTO-FILL LOGIC ---
     if (field === 'empId' && value.trim() !== '') {
       const empData = employeeMaster[value.trim()];
       if (empData) {
         newAttendees[index].name = empData.name || '';
+        newAttendees[index].company = empData.company || 'PCHI';
         if (availableDepartments.includes(empData.department)) {
           newAttendees[index].department = empData.department;
           newAttendees[index].customDepartment = '';
@@ -393,6 +424,7 @@ export default function App() {
       if (matchedEntry) {
         const [empId, empData] = matchedEntry;
         newAttendees[index].empId = empId;
+        newAttendees[index].company = empData.company || 'PCHI';
         if (availableDepartments.includes(empData.department)) {
           newAttendees[index].department = empData.department;
           newAttendees[index].customDepartment = '';
@@ -407,11 +439,11 @@ export default function App() {
   };
 
   const addAttendee = () => {
-    const lastDept = formData.attendees.length > 0 
-      ? formData.attendees[formData.attendees.length - 1].department 
-      : availableDepartments[0] || 'Underwriting';
+    const lastDept = formData.attendees.length > 0 ? formData.attendees[formData.attendees.length - 1].department : availableDepartments[0] || 'Underwriting';
+    const lastCompany = formData.attendees.length > 0 ? formData.attendees[formData.attendees.length - 1].company : 'PCHI';
+    
     setFormData(prev => ({
-      ...prev, attendees: [...prev.attendees, { empId: '', name: '', department: lastDept, customDepartment: '' }]
+      ...prev, attendees: [...prev.attendees, { empId: '', name: '', company: lastCompany, department: lastDept, customDepartment: '' }]
     }));
   };
 
@@ -429,6 +461,7 @@ export default function App() {
     const allStaff = Object.keys(employeeMaster).map(id => ({
       empId: id,
       name: employeeMaster[id].name,
+      company: employeeMaster[id].company || 'PCHI',
       department: availableDepartments.includes(employeeMaster[id].department) ? employeeMaster[id].department : 'Other',
       customDepartment: availableDepartments.includes(employeeMaster[id].department) ? '' : employeeMaster[id].department
     }));
@@ -459,9 +492,12 @@ export default function App() {
     setExpandedRows(newExpanded);
   };
 
+  // --- ADVANCED IMPORT & FULL RETROACTIVE SYNC ---
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    showToast("กำลังประมวลผลไฟล์และอัปเดตข้อมูลเก่าแบบ Auto-Sync กรุณารอสักครู่...", "success");
 
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -471,18 +507,99 @@ export default function App() {
         const empData = {};
         let count = 0;
 
+        const headers = splitCSV(rows[0]).map(h => h.replace(/^"|"$/g, '').trim());
+        const iId = headers.findIndex(h => h.includes('Employee No'));
+        const iName = headers.findIndex(h => h.includes('Employee Name'));
+        const iDept = headers.findIndex(h => h.includes('Organization Unit') || h.includes('Department'));
+        const iComp = headers.findIndex(h => h.includes('Company'));
+
+        const idxId = iId >= 0 ? iId : 0;
+        const idxName = iName >= 0 ? iName : 1;
+        const idxDept = iDept >= 0 ? iDept : 2;
+        const idxComp = iComp >= 0 ? iComp : 4; 
+
         rows.forEach((row, i) => {
-          if (i === 0 || !row.trim()) return;
-          const cols = row.split(',');
-          if (cols.length >= 3) {
-            const id = cols[0].trim();
-            empData[id] = { name: cols[1].trim(), department: cols[2].trim() };
+          if (i === 0 || !row.trim()) return; 
+          
+          const cols = splitCSV(row);
+          if (cols.length > Math.max(idxId, idxName)) {
+            const id = cols[idxId].replace(/^"|"$/g, '').trim();
+            if (!id) return;
+            
+            empData[id] = { 
+              name: cols[idxName].replace(/^"|"$/g, '').trim(), 
+              department: cols[idxDept] ? cols[idxDept].replace(/^"|"$/g, '').trim() : 'Unknown',
+              company: cols[idxComp] ? cols[idxComp].replace(/^"|"$/g, '').trim().toUpperCase() : 'PCHI'
+            };
             count++;
           }
         });
 
+        // 1. อัปเดต Master Data เข้า Firebase
         await setDoc(doc(db, 'settings', 'employee_master'), { data: empData });
-        showToast(`นำเข้าฐานข้อมูลพนักงานสำเร็จแล้ว ${count} คน!`);
+        
+        // 2. RETROACTIVE SYNC: วิ่งกลับไปเช็คคอร์สเก่าๆ ทั้งหมด
+        let updatedRecordsCount = 0;
+        const updatePromises = [];
+        
+        records.forEach(record => {
+          let needsUpdate = false;
+          if (record.attendees && record.attendees.length > 0) {
+            
+            const newAttendees = record.attendees.map(att => {
+              const empIdVal = att.empId?.trim();
+              const nameVal = att.name?.trim();
+              
+              let masterInfo = null;
+              let matchedId = empIdVal;
+
+              // หาจาก ID ก่อน ถ้าไม่เจอ หาจากชื่อ
+              if (empIdVal && empData[empIdVal]) {
+                masterInfo = empData[empIdVal];
+              } else if (nameVal) {
+                const entry = Object.entries(empData).find(([id, data]) => data.name === nameVal);
+                if (entry) {
+                  matchedId = entry[0];
+                  masterInfo = entry[1];
+                }
+              }
+
+              if (masterInfo) {
+                // ถ้าในคอร์สเก่า ค่าไม่ตรงกับไฟล์ Master ล่าสุด ให้สั่งจับอัปเดต!
+                if (att.company !== masterInfo.company || 
+                    att.department !== masterInfo.department || 
+                    att.name !== masterInfo.name ||
+                    att.empId !== matchedId) {
+                  needsUpdate = true;
+                  return {
+                    ...att,
+                    empId: matchedId,
+                    name: masterInfo.name,
+                    company: masterInfo.company,
+                    department: masterInfo.department,
+                    customDepartment: '' 
+                  };
+                }
+              }
+              return att;
+            });
+            
+            if (needsUpdate) {
+              const updatedRecord = { ...record, attendees: newAttendees };
+              const docRef = doc(db, 'training_records', record.id);
+              updatePromises.push(setDoc(docRef, updatedRecord));
+              updatedRecordsCount++;
+            }
+          }
+        });
+        
+        if (updatePromises.length > 0) {
+          await Promise.all(updatePromises);
+          showToast(`นำเข้าสำเร็จ ${count} คน และอัปเดตประวัติเก่าย้อนหลังให้ตรงกัน ${updatedRecordsCount} คอร์ส!`);
+        } else {
+          showToast(`นำเข้าสำเร็จ ${count} คน! (ข้อมูลประวัติเก่าเป็นปัจจุบันอยู่แล้ว)`);
+        }
+        
         if (fileInputRef.current) fileInputRef.current.value = ''; 
       } catch (err) {
         console.error("Error parsing CSV:", err);
@@ -493,7 +610,7 @@ export default function App() {
   };
 
   const exportToCSV = () => {
-    const headers = ['Date', 'Type', 'Activity/Course', 'Duration (Hrs)', 'Total Seats', 'Total Cost (THB)', 'Attendee Details (ID/Name/Dept)'];
+    const headers = ['Date', 'Type', 'Activity/Course', 'Duration (Hrs)', 'Total Seats', 'Total Cost (THB)', 'Attendee Details (ID/Name/Company/Dept)'];
     const rows = filteredRecords.map(r => {
       const type = r.type || 'Training';
       const cost = r.totalCost || r.cost || 0;
@@ -503,7 +620,7 @@ export default function App() {
 
       if (r.attendees) {
         seats = r.attendees.length;
-        details = r.attendees.map(a => `[${a.empId||'-'}] ${a.name||'-'} (${a.department})`).join(" | ");
+        details = r.attendees.map(a => `[${a.company || 'PCHI'}] [${a.empId||'-'}] ${a.name||'-'} (${a.department})`).join(" | ");
       } else if (r.allocations) {
         seats = r.allocations.reduce((sum, a) => sum + Number(a.participants), 0);
         details = r.allocations.map(a => `${a.department} (${a.participants} pax)`).join(" | ");
@@ -530,7 +647,7 @@ export default function App() {
     } else if (record.allocations) {
       record.allocations.forEach(alloc => {
         for(let i=0; i<Number(alloc.participants || 0); i++) {
-          initialAttendees.push({ empId: '', name: 'Legacy Data', department: alloc.department, customDepartment: '' });
+          initialAttendees.push({ empId: '', name: 'Legacy Data', company: 'PCHI', department: alloc.department, customDepartment: '' });
         }
       });
     }
@@ -541,7 +658,7 @@ export default function App() {
       date: record.date || '',
       totalCost: record.totalCost || record.cost || '',
       durationHours: record.durationHours || '',
-      attendees: initialAttendees.length > 0 ? initialAttendees : [{ empId: '', name: '', department: availableDepartments[0], customDepartment: '' }]
+      attendees: initialAttendees.length > 0 ? initialAttendees : [{ empId: '', name: '', company: 'PCHI', department: availableDepartments[0], customDepartment: '' }]
     });
     setEditingId(record.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -551,7 +668,7 @@ export default function App() {
     setFormData({
       type: 'Training',
       course: '', date: '', totalCost: '', durationHours: '',
-      attendees: [{ empId: '', name: '', department: availableDepartments[0] || 'Underwriting', customDepartment: '' }]
+      attendees: [{ empId: '', name: '', company: 'PCHI', department: availableDepartments[0] || 'Underwriting', customDepartment: '' }]
     });
     setEditingId(null);
   };
@@ -572,6 +689,7 @@ export default function App() {
         validAttendees.push({
           empId: a.empId.trim(),
           name: a.name.trim(),
+          company: a.company || 'PCHI',
           department: finalDepartment
         });
       }
@@ -640,7 +758,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Feature 3: Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal */}
       {recordToDelete && (
         <div className="fixed inset-0 bg-slate-900/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -671,31 +789,32 @@ export default function App() {
         </div>
       )}
 
-      {/* Feature 5: Individual Profile Modal */}
+      {/* Individual Profile Modal */}
       {selectedEmployee && employeeProfileData && (
         <div className="fixed inset-0 bg-slate-900/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
             
-            {/* Header */}
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white relative flex-shrink-0">
               <button onClick={() => setSelectedEmployee(null)} className="absolute top-4 right-4 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition-colors">
                 <X size={18} />
               </button>
               <div className="flex items-center gap-4">
-                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center border-2 border-white/30 backdrop-blur-sm">
+                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center border-2 border-white/30 backdrop-blur-sm flex-shrink-0">
                   <User size={32} className="text-white" />
                 </div>
-                <div>
-                  <h2 className="text-2xl font-bold">{employeeProfileData.name || 'Unknown Name'}</h2>
-                  <p className="text-blue-100 flex items-center gap-2 text-sm mt-1">
+                <div className="min-w-0">
+                  <h2 className="text-2xl font-bold truncate">{employeeProfileData.name || 'Unknown Name'}</h2>
+                  <div className="flex flex-wrap items-center gap-2 text-sm mt-1">
                     <span className="bg-blue-800/50 px-2 py-0.5 rounded font-mono">{employeeProfileData.empId || 'NO-ID'}</span>
-                    <span>{employeeProfileData.department}</span>
-                  </p>
+                    <span className={`px-2 py-0.5 rounded font-bold text-xs ${employeeProfileData.company === 'MSS' ? 'bg-emerald-500/80' : 'bg-indigo-500/80'}`}>
+                      {employeeProfileData.company}
+                    </span>
+                    <span className="text-blue-100 truncate">{employeeProfileData.department}</span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Profile KPIs */}
             <div className="flex bg-slate-50 border-b border-slate-100 flex-shrink-0">
               <div className="flex-1 p-4 text-center border-r border-slate-200">
                 <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Learning Hours</p>
@@ -711,7 +830,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* History List */}
             <div className="p-0 overflow-y-auto flex-1 bg-slate-50">
               <div className="p-4 border-b border-slate-100 bg-white sticky top-0 z-10 shadow-sm">
                 <h3 className="font-bold text-slate-700 flex items-center text-sm">
@@ -751,22 +869,44 @@ export default function App() {
 
       <div className="max-w-[1400px] mx-auto space-y-6">
         
-        {/* Header */}
+        {/* Header & Global Filters */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Training Hours & Budget</h1>
+            <h1 className="text-3xl font-bold text-slate-900 flex items-center">
+              Training Dashboard
+            </h1>
             <p className="text-slate-500 mt-1 flex items-center gap-2">
-              Track multi-department spending, participation, and learning hours 
+              Track multi-company spending & learning hours 
               <span className="text-blue-500 font-medium text-sm border-l border-slate-300 pl-2">Live Auto-Save ON</span>
               {loadedEmployeesCount > 0 && (
                 <span className="text-emerald-600 font-medium text-sm flex items-center border-l border-slate-300 pl-2">
-                  <Database size={14} className="mr-1" /> {loadedEmployeesCount} Employees Loaded
+                  <Database size={14} className="mr-1" /> {loadedEmployeesCount} Employees
                 </span>
               )}
             </p>
           </div>
+          
+          {/* Global Controls */}
           <div className="flex flex-wrap items-center gap-3">
-            <div className="bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
+            
+            {/* Company Filter */}
+            <div className="bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm flex items-center">
+              <Building2 size={16} className="text-slate-400 mr-2" />
+              <select 
+                value={filterCompany} 
+                onChange={(e) => setFilterCompany(e.target.value)}
+                className="bg-transparent text-sm font-bold text-indigo-700 focus:outline-none cursor-pointer"
+              >
+                <option value="All">All Companies</option>
+                {COMPANIES.map(company => (
+                  <option key={company} value={company}>{company} Only</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Year Filter */}
+            <div className="bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm flex items-center">
+              <Calendar size={16} className="text-slate-400 mr-2" />
               <select 
                 value={filterYear} 
                 onChange={(e) => setFilterYear(e.target.value)}
@@ -777,8 +917,10 @@ export default function App() {
                 ))}
               </select>
             </div>
+            
+            {/* Budget Input */}
             <div className="flex items-center space-x-3 bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm">
-              <label className="text-sm font-medium text-slate-500">Total Budget (THB):</label>
+              <label className="text-sm font-medium text-slate-500">Total Budget:</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">฿</span>
                 <input 
@@ -786,7 +928,7 @@ export default function App() {
                   value={annualBudget} 
                   onChange={handleBudgetChange}
                   onBlur={(e) => saveBudgetToCloud(Number(e.target.value))}
-                  className="w-32 pl-7 pr-2 py-1.5 text-right font-bold text-slate-800 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  className="w-28 pl-7 pr-2 py-1.5 text-right font-bold text-slate-800 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -801,7 +943,7 @@ export default function App() {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase">Total Spent</p>
-                  <h3 className="text-lg font-bold text-slate-800">฿{metrics.totalSpent.toLocaleString()}</h3>
+                  <h3 className="text-lg font-bold text-slate-800">฿{Math.round(metrics.totalSpent).toLocaleString()}</h3>
                 </div>
                 <button 
                   onClick={() => setShowSpentBreakdown(!showSpentBreakdown)}
@@ -816,11 +958,11 @@ export default function App() {
                 <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
                   <div className="flex justify-between items-center text-[10px]">
                     <span className="text-slate-500 font-medium flex items-center"><BookOpen size={10} className="mr-1 text-blue-400"/> Train:</span>
-                    <span className="font-bold text-blue-600">฿{metrics.trainingSpent.toLocaleString()}</span>
+                    <span className="font-bold text-blue-600">฿{Math.round(metrics.trainingSpent).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center text-[10px]">
                     <span className="text-slate-500 font-medium flex items-center"><PartyPopper size={10} className="mr-1 text-pink-400"/> Engage:</span>
-                    <span className="font-bold text-pink-600">฿{metrics.engagementSpent.toLocaleString()}</span>
+                    <span className="font-bold text-pink-600">฿{Math.round(metrics.engagementSpent).toLocaleString()}</span>
                   </div>
                 </div>
               )}
@@ -830,9 +972,9 @@ export default function App() {
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
             <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><TrendingUp size={20} /></div>
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase">Remaining</p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase">Remaining Budget</p>
               <h3 className={`text-lg font-bold ${annualBudget - metrics.totalSpent < 0 ? 'text-red-500' : 'text-slate-800'}`}>
-                ฿{(annualBudget - metrics.totalSpent).toLocaleString()}
+                ฿{Math.round(annualBudget - metrics.totalSpent).toLocaleString()}
               </h3>
             </div>
           </div>
@@ -953,7 +1095,7 @@ export default function App() {
                           {index + 1}
                         </div>
                         <div className="min-w-0">
-                          {/* Feature 5: Clickable Name for Profile Modal */}
+                          {/* Clickable Name for Profile Modal */}
                           <button 
                             onClick={() => setSelectedEmployee(learner)}
                             className="text-sm font-bold text-slate-800 truncate hover:text-blue-600 text-left block w-full outline-none" 
@@ -961,9 +1103,14 @@ export default function App() {
                           >
                             {learner.name || learner.empId || 'Unknown'}
                           </button>
-                          <p className="text-[10px] text-slate-500 truncate" title={learner.department}>
-                            {learner.department}
-                          </p>
+                          <div className="flex items-center gap-1 mt-0.5">
+                             <span className={`text-[8px] font-bold px-1 rounded ${learner.company === 'MSS' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                               {learner.company}
+                             </span>
+                             <p className="text-[10px] text-slate-500 truncate" title={learner.department}>
+                               {learner.department}
+                             </p>
+                          </div>
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0 ml-2">
@@ -978,7 +1125,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Feature 2: Charts Section - Row 2 (Monthly Trend) */}
+        {/* Charts Section - Row 2 (Monthly Trend) */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-4 flex flex-col">
             <h3 className="text-lg font-bold mb-4 flex items-center text-slate-800">
@@ -991,7 +1138,7 @@ export default function App() {
                   <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 12}} />
                   <YAxis yAxisId="left" axisLine={false} tickLine={false} tickFormatter={(value) => `฿${value >= 1000 ? (value/1000)+'k' : value}`} width={60} />
                   <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tickFormatter={(value) => `${value}h`} width={40} />
-                  <RechartsTooltip formatter={(value, name) => [name.includes('Spent') ? `฿${value.toLocaleString()}` : `${value} Hrs`, name]} />
+                  <RechartsTooltip formatter={(value, name) => [name.includes('Spent') ? `฿${Math.round(value).toLocaleString()}` : `${value} Hrs`, name]} />
                   <Legend verticalAlign="top" height={36} />
                   <Line yAxisId="left" type="monotone" dataKey="trainingSpent" name="Training Spent" stroke="#3b82f6" strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
                   <Line yAxisId="left" type="monotone" dataKey="engagementSpent" name="Engagement Spent" stroke="#ec4899" strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
@@ -1105,14 +1252,24 @@ export default function App() {
                           </p>
                         )}
 
-                        <select 
-                          value={attendee.department} 
-                          onChange={(e) => handleAttendeeChange(index, 'department', e.target.value)} 
-                          className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                        >
-                          {availableDepartments.map(d => <option key={d} value={d}>{d}</option>)}
-                          <option value="Other" className="font-semibold text-blue-600">+ เพิ่มแผนกใหม่ (Other)</option>
-                        </select>
+                        <div className="flex gap-2">
+                           <select 
+                             value={attendee.company} 
+                             onChange={(e) => handleAttendeeChange(index, 'company', e.target.value)} 
+                             className="w-1/3 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-bold text-indigo-700"
+                           >
+                             {COMPANIES.map(c => <option key={c} value={c}>{c}</option>)}
+                           </select>
+
+                           <select 
+                             value={attendee.department} 
+                             onChange={(e) => handleAttendeeChange(index, 'department', e.target.value)} 
+                             className="w-2/3 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                           >
+                             {availableDepartments.map(d => <option key={d} value={d}>{d}</option>)}
+                             <option value="Other" className="font-semibold text-blue-600">+ เพิ่มแผนกใหม่ (Other)</option>
+                           </select>
+                        </div>
                         
                         {attendee.department === 'Other' && (
                           <input 
@@ -1296,15 +1453,20 @@ export default function App() {
                                         <li key={idx} className="flex items-start p-2 bg-slate-50 border border-slate-100 rounded-md hover:bg-white transition-colors group">
                                           <UserCheck size={14} className={`mt-0.5 mr-2 flex-shrink-0 ${isEngagement ? 'text-pink-500' : 'text-emerald-500'}`} />
                                           <div className="min-w-0">
-                                            {/* Feature 5: Clickable Name inside expanded row */}
+                                            {/* Clickable Name inside expanded row */}
                                             <button 
                                               onClick={() => setSelectedEmployee(a)}
-                                              className="text-sm font-medium text-slate-800 truncate text-left outline-none group-hover:text-blue-600 transition-colors" 
+                                              className="text-sm font-medium text-slate-800 truncate text-left outline-none group-hover:text-blue-600 transition-colors block w-full" 
                                               title="คลิกดูประวัติการอบรม"
                                             >
                                               {a.empId ? `[${a.empId}] ` : ''}{a.name || 'Unknown Name'}
                                             </button>
-                                            <p className="text-[10px] text-slate-500 truncate mt-0.5" title={a.department}>{a.department}</p>
+                                            <div className="flex items-center gap-1 mt-0.5">
+                                              <span className={`text-[8px] font-bold px-1 rounded ${a.company === 'MSS' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                                                {a.company || 'PCHI'}
+                                              </span>
+                                              <p className="text-[10px] text-slate-500 truncate" title={a.department}>{a.department}</p>
+                                            </div>
                                           </div>
                                         </li>
                                       ))}
