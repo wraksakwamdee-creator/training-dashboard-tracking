@@ -91,7 +91,7 @@ export default function App() {
     date: '',
     totalCost: '',
     durationHours: '',
-    attendees: [{ empId: '', name: '', company: 'PCHI', department: 'Underwriting', customDepartment: '' }]
+    attendees: [{ empId: '', name: '', company: 'PCHI', department: '', customDepartment: '' }]
   });
 
   useEffect(() => {
@@ -404,34 +404,50 @@ export default function App() {
     const newAttendees = [...formData.attendees];
     newAttendees[index][field] = value;
 
-    if (field === 'empId' && value.trim() !== '') {
-      const empData = employeeMaster[value.trim()];
-      if (empData) {
-        newAttendees[index].name = empData.name || '';
-        newAttendees[index].company = empData.company || 'PCHI';
-        if (availableDepartments.includes(empData.department)) {
-          newAttendees[index].department = empData.department;
-          newAttendees[index].customDepartment = '';
-        } else {
-          newAttendees[index].department = 'Other';
-          newAttendees[index].customDepartment = empData.department || '';
+    if (field === 'empId') {
+      if (value.trim() !== '') {
+        const empData = employeeMaster[value.trim()];
+        if (empData) {
+          newAttendees[index].name = empData.name || '';
+          newAttendees[index].company = empData.company || 'PCHI';
+          if (availableDepartments.includes(empData.department)) {
+            newAttendees[index].department = empData.department;
+            newAttendees[index].customDepartment = '';
+          } else {
+            newAttendees[index].department = 'Other';
+            newAttendees[index].customDepartment = empData.department || '';
+          }
         }
+      } else {
+        // เมื่อลบ Emp ID จนว่างเปล่า ให้ล้างข้อมูลช่องอื่นเป็น Blank / Default
+        newAttendees[index].name = '';
+        newAttendees[index].company = 'PCHI';
+        newAttendees[index].department = '';
+        newAttendees[index].customDepartment = '';
       }
-    } else if (field === 'name' && value.trim() !== '') {
-      const matchedEntry = Object.entries(employeeMaster).find(
-        ([id, data]) => data.name === value.trim()
-      );
-      if (matchedEntry) {
-        const [empId, empData] = matchedEntry;
-        newAttendees[index].empId = empId;
-        newAttendees[index].company = empData.company || 'PCHI';
-        if (availableDepartments.includes(empData.department)) {
-          newAttendees[index].department = empData.department;
-          newAttendees[index].customDepartment = '';
-        } else {
-          newAttendees[index].department = 'Other';
-          newAttendees[index].customDepartment = empData.department || '';
+    } else if (field === 'name') {
+      if (value.trim() !== '') {
+        const matchedEntry = Object.entries(employeeMaster).find(
+          ([id, data]) => data.name === value.trim()
+        );
+        if (matchedEntry) {
+          const [empId, empData] = matchedEntry;
+          newAttendees[index].empId = empId;
+          newAttendees[index].company = empData.company || 'PCHI';
+          if (availableDepartments.includes(empData.department)) {
+            newAttendees[index].department = empData.department;
+            newAttendees[index].customDepartment = '';
+          } else {
+            newAttendees[index].department = 'Other';
+            newAttendees[index].customDepartment = empData.department || '';
+          }
         }
+      } else {
+        // เมื่อลบ Name จนว่างเปล่า ให้ล้างข้อมูลช่องอื่นเป็น Blank / Default
+        newAttendees[index].empId = '';
+        newAttendees[index].company = 'PCHI';
+        newAttendees[index].department = '';
+        newAttendees[index].customDepartment = '';
       }
     }
 
@@ -439,7 +455,7 @@ export default function App() {
   };
 
   const addAttendee = () => {
-    const lastDept = formData.attendees.length > 0 ? formData.attendees[formData.attendees.length - 1].department : availableDepartments[0] || 'Underwriting';
+    const lastDept = formData.attendees.length > 0 ? formData.attendees[formData.attendees.length - 1].department : '';
     const lastCompany = formData.attendees.length > 0 ? formData.attendees[formData.attendees.length - 1].company : 'PCHI';
     
     setFormData(prev => ({
@@ -658,7 +674,7 @@ export default function App() {
       date: record.date || '',
       totalCost: record.totalCost || record.cost || '',
       durationHours: record.durationHours || '',
-      attendees: initialAttendees.length > 0 ? initialAttendees : [{ empId: '', name: '', company: 'PCHI', department: availableDepartments[0], customDepartment: '' }]
+      attendees: initialAttendees.length > 0 ? initialAttendees : [{ empId: '', name: '', company: 'PCHI', department: '', customDepartment: '' }]
     });
     setEditingId(record.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -668,7 +684,7 @@ export default function App() {
     setFormData({
       type: 'Training',
       course: '', date: '', totalCost: '', durationHours: '',
-      attendees: [{ empId: '', name: '', company: 'PCHI', department: availableDepartments[0] || 'Underwriting', customDepartment: '' }]
+      attendees: [{ empId: '', name: '', company: 'PCHI', department: '', customDepartment: '' }]
     });
     setEditingId(null);
   };
@@ -685,6 +701,10 @@ export default function App() {
     const validAttendees = [];
     for (let a of formData.attendees) {
       if (a.name.trim() !== '' || a.empId.trim() !== '') {
+        if (!a.department || a.department === '') {
+          showToast("กรุณาเลือกแผนกให้ครบทุกคน", "error");
+          return;
+        }
         const finalDepartment = a.department === 'Other' ? (a.customDepartment.trim() || 'Unknown') : a.department;
         validAttendees.push({
           empId: a.empId.trim(),
@@ -1265,7 +1285,9 @@ export default function App() {
                              value={attendee.department} 
                              onChange={(e) => handleAttendeeChange(index, 'department', e.target.value)} 
                              className="w-2/3 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                             required
                            >
+                             <option value="" disabled>Department</option>
                              {availableDepartments.map(d => <option key={d} value={d}>{d}</option>)}
                              <option value="Other" className="font-semibold text-blue-600">+ เพิ่มแผนกใหม่ (Other)</option>
                            </select>
